@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SettleLoop — AI Payment Recovery Intelligence</title>
+  <meta name="description"
+    content="SettleLoop: Intelligent payment mandate recovery system. Evaluate Control, Baseline, and AI-guardrailed Smart strategies across a persisted virtual clock." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    rel="stylesheet" />
+  <link rel="stylesheet" href="./styles.css" />
+  <script>
+    (function() {
+      try {
+        localStorage.removeItem('sl-theme');
+        var s = sessionStorage.getItem('sl-theme');
+        document.documentElement.setAttribute('data-theme', s === 'dark' ? 'dark' : 'light');
+      } catch (e) {
+        document.documentElement.setAttribute('data-theme', 'light');
+      }
+    })();
+  </script>
+</head>
+
+<body>
+
+  <!-- ── TOP NAVIGATION ───────────────────────────────────────────────────────── -->
+  <nav class="topnav" role="navigation" aria-label="Main navigation">
+    <div class="nav-inner">
+      <a href="#" class="nav-brand" aria-label="SettleLoop home">
+        <div class="brand-logo-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="currentColor" stroke-width="2.2"
+              stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </div>
+        <span class="brand-name">SettleLoop</span>
+      </a>
+      <div class="nav-actions">
+        <a href="#experiment" class="nav-link">Experiment</a>
+        <a href="#strategies" class="nav-link">Strategies</a>
+        <a href="#results" class="nav-link">Results</a>
+        <a href="#architecture" class="nav-link">Architecture</a>
+        <button id="theme-toggle" class="theme-btn" aria-label="Toggle light/dark mode" title="Toggle theme">
+          <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="5" stroke="currentColor" stroke-width="2" />
+            <path
+              d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          <svg class="icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ── HERO (TWO-COLUMN PRODUCT COMPOSITION) ─────────────────────────────────── -->
+  <header class="hero" aria-label="Product overview">
+    <div class="container hero-container">
+
+      <!-- Hero Left Column: Narrative & Primary Actions -->
+      <div class="hero-left">
+        <div class="sim-notice" role="note">
+          <span class="sim-dot"></span>
+          SIMULATION • NOT LIVE PAYMENT PROCESSING
+        </div>
+
+        <div class="hero-eyebrow">PAYMENT RECOVERY INTELLIGENCE</div>
+
+        <h1 class="hero-headline">
+          Recover Failed Payments.<br />
+          <span class="headline-gradient">Intelligently.</span>
+        </h1>
+
+        <p class="hero-copy">
+          SettleLoop intelligently decides when and how to recover failed recurring payments — with deterministic safety
+          controls.
+        </p>
+
+        <div class="hero-actions">
+          <a href="#experiment" class="btn btn-hero">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <polygon points="5,3 19,12 5,21" fill="currentColor" />
+            </svg>
+            Run an Experiment
+          </a>
+          <a href="#architecture" class="btn btn-ghost">
+            View Architecture
+          </a>
+        </div>
+
+        <div class="hero-badges-row">
+          <span class="hero-tech-badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" stroke-width="2" />
+            </svg>
+            AI + Guardrails
+          </span>
+          <span class="hero-tech-badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+              <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" />
+            </svg>
+            Persisted Virtual Clock
+          </span>
+          <span class="hero-tech-badge">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <ellipse cx="12" cy="5" rx="9" ry="3" stroke="currentColor" stroke-width="2" />
+              <path d="M21 12c0 1.66-4.03 3-9 3S3 13.66 3 12" stroke="currentColor" stroke-width="2" />
+              <path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5" stroke="currentColor" stroke-width="2" />
+            </svg>
+            Atomic PostgreSQL RPCs
+          </span>
+        </div>
+      </div>
+
+      <!-- Hero Right Column: Human-Centered Product Visual -->
+      <div class="hero-right" aria-label="Human-centered payment recovery visual">
+        <div class="hero-visual-frame" id="hero-visual-frame">
+
+          <!-- Clean Minimal Incident Status Bar -->
+          <div class="hero-frame-header">
+            <div class="hero-frame-status">
+              <span class="hero-status-pulse" id="hero-status-pulse"></span>
+              <span class="hero-status-title" id="hero-status-title">PAYMENT ATTEMPT &bull; REC-4921</span>
+            </div>
+            <button id="btn-replay-hero" class="hero-replay-btn" title="Replay recovery experience"
+              aria-label="Replay recovery experience">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.19" />
+              </svg>
+              <span>Replay Story</span>
+            </button>
+          </div>
+
+          <!-- Visual Stage: The Professional Human & Docked Transaction Recovery Journey -->
+          <div class="hero-stage-viewport">
+            <!-- Professional Hero Character Image -->
+            <div class="hero-image-wrapper">
+              <picture>
+                <source srcset="assets/hero-professional.webp" type="image/webp">
+                <img src="assets/hero-professional.jpg" alt="Fintech professional managing intelligent payment recovery"
+                  class="hero-professional-img" id="hero-professional-img" width="512" height="512" loading="eager" />
+              </picture>
+              <div class="hero-img-overlay-glow"></div>
+            </div>
+
+            <!-- Laptop Telemetry Status Ping (subtle indicator anchored near laptop keyboard) -->
+            <div class="laptop-ping-anchor" id="laptop-ping-anchor">
+              <span class="ping-wave"></span>
+              <span class="ping-point"></span>
+            </div>
+
+            <!-- Clean Transaction Recovery Journey Dock (docked at bottom, clear of face/body) -->
+            <div class="hero-tx-dock" id="hero-tx-dock">
+              <div class="tx-rail">
+                <!-- Source Node -->
+                <div class="tx-node node-source" title="Customer Payment Mandate">
+                  <div class="tx-node-icon">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="2" y="5" width="20" height="14" rx="2" />
+                      <line x1="2" y1="10" x2="22" y2="10" />
+                    </svg>
+                  </div>
+                  <span class="tx-node-label">Mandate</span>
+                </div>
+
+                <!-- Guided Track with Center Checkpoint & Moving Chip -->
+                <div class="tx-track" id="tx-track">
+                  <div class="tx-track-line">
+                    <div class="tx-track-progress" id="tx-track-progress"></div>
+                  </div>
+
+                  <!-- SettleLoop Intelligence Checkpoint -->
+                  <div class="tx-checkpoint" id="tx-checkpoint" title="SettleLoop Safety Guardrails & AI Policy">
+                    <span class="tx-checkpoint-dot" id="tx-checkpoint-dot">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <polygon points="12,2 15,9 22,9 17,14 19,21 12,17 5,21 7,14 2,9 9,9" />
+                      </svg>
+                    </span>
+                  </div>
+
+                  <!-- The Animated Transaction Chip -->
+                  <div class="tx-chip state-init" id="tx-chip">
+                    <span class="tx-chip-amount">&#8377;8,499</span>
+                    <span class="tx-chip-tag" id="tx-chip-tag">PAYMENT</span>
+                  </div>
+                </div>
+
+                <!-- Destination Node -->
+                <div class="tx-node node-dest" id="tx-node-dest" title="Merchant Settlement Account">
+                  <div class="tx-node-icon">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 21h18M3 10h18M5 10v11M19 10v11M9 10v11M15 10v11M12 3l9 7H3z" />
+                    </svg>
+                  </div>
+                  <span class="tx-node-label">Merchant</span>
+                </div>
+              </div>
+
+              <!-- Clear Story State Banner -->
+              <div class="tx-status-banner" id="tx-status-banner">
+                <span class="tx-status-pill pill-init" id="tx-status-pill">ATTEMPT</span>
+                <span class="tx-status-detail" id="tx-status-detail">Monthly recurring mandate &#8377;8,499 initiated</span>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Bottom Metric Strip -->
+          <div class="hero-frame-footer">
+            <div class="hero-footer-item">
+              <span class="footer-label">Recovery Action</span>
+              <span class="footer-value" id="hero-action-status">Scheduled D+1 Window</span>
+            </div>
+            <div class="footer-sep"></div>
+            <div class="hero-footer-item">
+              <span class="footer-label">Customer Friction</span>
+              <span class="footer-value success-accent" id="hero-friction-status">0 Blind Retries</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </header>
+
+  <main>
+    <!-- ── 2. EXPERIMENT SECTION ──────────────────────────────────────────────── -->
+    <section id="experiment" class="section section-alt" aria-label="Simulation experiment">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-badge">Evaluation Protocol</div>
+          <h2 class="section-title">Evaluate Recovery Strategies</h2>
+          <p class="section-sub">
+            Evaluate three recovery strategies under identical synthetic failure conditions and virtual timeline.<br />
+            Each mandate is allocated to exactly one arm: <strong>Control</strong>, <strong>Baseline</strong>, or <strong>Smart</strong>.
+          </p>
+        </div>
+
+        <!-- Lifecycle Flow Stepper -->
+        <div class="lifecycle-bar" aria-label="Experiment lifecycle sequence">
+          <div class="lifecycle-step active" id="step-configure">
+            <span class="step-num">1</span>
+            <span class="step-label">Configure</span>
+          </div>
+          <div class="lifecycle-connector"></div>
+          <div class="lifecycle-step" id="step-create">
+            <span class="step-num">2</span>
+            <span class="step-label">Create Simulation</span>
+          </div>
+          <div class="lifecycle-connector"></div>
+          <div class="lifecycle-step" id="step-ready">
+            <span class="step-num">3</span>
+            <span class="step-label">Simulation Ready</span>
+          </div>
+          <div class="lifecycle-connector"></div>
+          <div class="lifecycle-step" id="step-run">
+            <span class="step-num">4</span>
+            <span class="step-label">Run Simulation</span>
+          </div>
+          <div class="lifecycle-connector"></div>
+          <div class="lifecycle-step" id="step-results">
+            <span class="step-num">5</span>
+            <span class="step-label">Results</span>
+          </div>
+        </div>
+
+        <!-- Comparative Arms Overview -->
+        <div class="experiment-arms-grid" aria-label="Three strategies compared">
+          <!-- Arm 1: Control -->
+          <div class="arm-card arm-ctrl">
+            <div class="arm-top">
+              <span class="arm-badge badge-ctrl">Arm 1 · Benchmark</span>
+              <h3 class="arm-title">Control</h3>
+            </div>
+            <div class="arm-policy">Policy: Stand Down (No Retry)</div>
+            <div class="arm-flow">
+              <span class="arm-flow-step">Debit Fails</span>
+              <span class="arm-flow-arrow">&rarr;</span>
+              <span class="arm-flow-step step-stand">Stand Down</span>
+            </div>
+            <p class="arm-desc">Zero retries attempted. Establishes the unassisted baseline loss benchmark.</p>
+          </div>
+
+          <!-- Arm 2: Baseline -->
+          <div class="arm-card arm-base">
+            <div class="arm-top">
+              <span class="arm-badge badge-base">Arm 2 · Industry Standard</span>
+              <h3 class="arm-title">Baseline</h3>
+            </div>
+            <div class="arm-policy">Policy: Fixed Calendar Schedule</div>
+            <div class="arm-flow">
+              <span class="arm-flow-step">Debit Fails</span>
+              <span class="arm-flow-arrow">&rarr;</span>
+              <span class="arm-flow-step step-fixed">D+1 &rarr; D+3 &rarr; D+6</span>
+            </div>
+            <p class="arm-desc">Rigid calendar retries without failure-reason awareness or smart timing.</p>
+          </div>
+
+          <!-- Arm 3: Smart -->
+          <div class="arm-card arm-smart">
+            <div class="arm-top">
+              <span class="arm-badge badge-smart">Arm 3 · Proposed Solution</span>
+              <h3 class="arm-title">Smart Recovery</h3>
+            </div>
+            <div class="arm-policy">Policy: AI + Deterministic Guardrails</div>
+            <div class="arm-flow smart-arm-flow">
+              <span class="arm-flow-step">Classify</span>
+              <span class="arm-flow-arrow">&rarr;</span>
+              <span class="arm-flow-step step-ai">AI Proposal</span>
+              <span class="arm-flow-arrow">&rarr;</span>
+              <span class="arm-flow-step step-guard">Guardrails</span>
+              <span class="arm-flow-arrow">&rarr;</span>
+              <span class="arm-flow-step step-safe">Safe Action</span>
+            </div>
+            <p class="arm-desc">Intelligent window selection bounded by hard safety limits. AI never directly executes payments.</p>
+          </div>
+        </div>
+
+        <div class="setup-grid">
+          <!-- Setup Left: Input Configuration -->
+          <div class="card setup-card">
+            <div class="card-header">
+              <h3 class="card-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="3" />
+                  <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
+                Simulation Parameters
+              </h3>
+              <span class="card-badge">Deterministic Inputs</span>
+            </div>
+
+            <div class="param-group">
+              <label class="param-label" for="input-seed">Random Seed</label>
+              <div class="param-hint">Controls synthetic workload generation for repeatable runs.</div>
+              <input id="input-seed" class="param-input" type="number" value="20001" min="-9999999" max="9999999" />
+            </div>
+
+            <div class="param-group">
+              <label class="param-label" for="input-mandates">Mandate Count</label>
+              <div class="param-hint">Synthetic mandates assigned equally across Control, Baseline, and Smart.</div>
+              <input id="input-mandates" class="param-input" type="number" value="9" min="1" max="10000" />
+            </div>
+
+            <div class="param-group">
+              <label class="param-label" for="input-maxdays">Max Virtual Days</label>
+              <div class="param-hint">Simulation horizon in virtual time — executes with zero real-world wait.</div>
+              <input id="input-maxdays" class="param-input" type="number" value="7" min="1" max="365" />
+            </div>
+
+            <div class="param-footer-pill">
+              <span class="pill-dot"></span>
+              <span>Deterministic data generation &bull; Smart arm powered by Gemini AI</span>
+            </div>
+
+            <button id="btn-create" class="btn btn-primary w-full" type="button">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+              </svg>
+              Create Simulation
+            </button>
+
+            <div id="setup-alert" class="alert hidden" role="alert"></div>
+          </div>
+
+          <!-- Setup Right: Dynamic Preview & Execution State -->
+          <div class="card status-card">
+            <!-- State A: Before Creation Preview -->
+            <div id="run-empty" class="preview-panel">
+              <div class="card-header">
+                <h3 class="card-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                    <polyline points="2 17 12 22 22 17" />
+                    <polyline points="2 12 12 17 22 12" />
+                  </svg>
+                  Simulation Session
+                </h3>
+                <span class="card-badge">Configured Scope</span>
+              </div>
+
+              <div class="preview-metrics-grid">
+                <div class="preview-metric-box">
+                  <span class="preview-num" id="prev-mandates">9</span>
+                  <span class="preview-label">synthetic mandates</span>
+                  <span class="preview-sub">3 per arm</span>
+                </div>
+                <div class="preview-metric-box">
+                  <span class="preview-num">3</span>
+                  <span class="preview-label">recovery arms</span>
+                  <span class="preview-sub">Ctrl / Base / Smart</span>
+                </div>
+                <div class="preview-metric-box">
+                  <span class="preview-num" id="prev-days">7</span>
+                  <span class="preview-label">virtual days</span>
+                  <span class="preview-sub">persisted clock</span>
+                </div>
+              </div>
+
+              <div class="preview-explainer">
+                <div class="explainer-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10" />
+                    <line x1="12" y1="16" x2="12" y2="12" />
+                    <line x1="12" y1="8" x2="12.01" y2="8" />
+                  </svg>
+                </div>
+                <p>Click <strong>Create Simulation</strong> to allocate mandates across the three arms in PostgreSQL and initialize the persisted virtual clock.</p>
+              </div>
+            </div>
+
+            <!-- State B: After Creation (Ready / Running / Executed) -->
+            <div id="run-info" class="ready-panel hidden">
+              <div class="card-header">
+                <h3 class="card-title text-success">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                    <polyline points="22 4 12 14.01 9 11.01" />
+                  </svg>
+                  Simulation Ready
+                </h3>
+                <span class="card-badge badge-active">Active Session</span>
+              </div>
+
+              <div class="run-id-banner">
+                <span class="run-id-tag">ACTIVE SIMULATION RUN ID</span>
+                <span id="run-id-display" class="run-id-code">&mdash;</span>
+              </div>
+
+              <div class="real-state-grid">
+                <div class="state-cell">
+                  <span class="state-cell-title">Database Status</span>
+                  <span id="run-status" class="status-pill">&mdash;</span>
+                </div>
+                <div class="state-cell">
+                  <span class="state-cell-title">Virtual Clock</span>
+                  <span class="clock-display"><span id="run-day">0</span> / <span id="run-max">7</span> days</span>
+                </div>
+                <div class="state-cell">
+                  <span class="state-cell-title">Runner Status</span>
+                  <span id="exec-status" class="exec-pill">&mdash;</span>
+                </div>
+              </div>
+
+              <div class="clock-explainer">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 6v6l4 2" />
+                </svg>
+                <span>Virtual clock advances directly to due mandate dates without real-world waiting.</span>
+              </div>
+
+              <button id="btn-run" class="btn btn-run w-full" type="button">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                  <polygon points="5,3 19,12 5,21" fill="currentColor" />
+                </svg>
+                Run Full Simulation
+              </button>
+
+              <div id="run-alert" class="alert hidden" role="alert"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 3. STRATEGIES SECTION ──────────────────────────────────────────────── -->
+    <section id="strategies" class="section" aria-label="Recovery strategies comparison">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-badge">Comparative Arms</div>
+          <h2 class="section-title">The Three Recovery Strategies</h2>
+          <p class="section-sub">
+            Control measures unassisted failure costs, Baseline tests fixed deterministic retries, and Smart applies AI
+            classification bounded by deterministic guardrails.
+          </p>
+        </div>
+
+        <div class="strategies-grid">
+
+          <!-- Strategy 1: Control -->
+          <div class="strategy-card strat-control">
+            <div class="strat-top">
+              <div class="strat-icon strat-icon-ctrl">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+                  <path d="M15 9l-6 6M9 9l6 6" stroke="currentColor" stroke-width="2" />
+                </svg>
+              </div>
+              <div>
+                <span class="strat-label">Arm 1 · Benchmark</span>
+                <h3 class="strat-name">Control</h3>
+              </div>
+            </div>
+
+            <div class="strat-policy-tag policy-ctrl">Policy: No retry</div>
+            <p class="strat-desc">First failure → Stand down. Zero retries attempted. Establishes the baseline
+              unassisted loss benchmark.</p>
+
+            <div class="strat-flow-diagram">
+              <span class="flow-pill">First Failure</span>
+              <span class="flow-arrow">→</span>
+              <span class="flow-pill pill-terminal">Stand Down</span>
+            </div>
+
+            <div class="strat-metrics-wrapper">
+              <div class="awaiting-box" id="ctrl-awaiting">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+                  <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" />
+                </svg>
+                <span>Awaiting simulation results</span>
+              </div>
+              <div class="strat-metrics-list hidden" id="ctrl-metrics">
+                <div class="m-row"><span class="m-key">Recovery rate</span><span class="m-val" id="ctrl-rate">—</span>
+                </div>
+                <div class="m-row"><span class="m-key">Recovered mandates</span><span class="m-val"
+                    id="ctrl-recovered">—</span></div>
+                <div class="m-row"><span class="m-key">Executed attempts</span><span class="m-val"
+                    id="ctrl-attempts">—</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Strategy 2: Baseline -->
+          <div class="strategy-card strat-baseline">
+            <div class="strat-top">
+              <div class="strat-icon strat-icon-base">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2v20M2 12h20" stroke="currentColor" stroke-width="2" />
+                  <circle cx="12" cy="6" r="2" fill="currentColor" />
+                  <circle cx="12" cy="12" r="2" fill="currentColor" />
+                  <circle cx="12" cy="18" r="2" fill="currentColor" />
+                </svg>
+              </div>
+              <div>
+                <span class="strat-label">Arm 2 · Industry Standard</span>
+                <h3 class="strat-name">Baseline</h3>
+              </div>
+            </div>
+
+            <div class="strat-policy-tag policy-base">Policy: Fixed schedule</div>
+            <p class="strat-desc">D → D+1 → D+3 → D+6. Rigid calendar retry cadence without reason awareness or smart
+              pacing.</p>
+
+            <!-- Baseline Timeline Animation -->
+            <div class="baseline-timeline" aria-label="Baseline policy timeline">
+              <div class="timeline-title-row">
+                <span class="timeline-meta">Baseline policy timeline — explanatory</span>
+              </div>
+              <div class="timeline-track">
+                <div class="t-stop">
+                  <span class="t-dot"></span>
+                  <span class="t-label">Day 0</span>
+                </div>
+                <div class="t-line"></div>
+                <div class="t-stop">
+                  <span class="t-dot"></span>
+                  <span class="t-label">Day 1</span>
+                </div>
+                <div class="t-line"></div>
+                <div class="t-stop">
+                  <span class="t-dot"></span>
+                  <span class="t-label">Day 3</span>
+                </div>
+                <div class="t-line"></div>
+                <div class="t-stop">
+                  <span class="t-dot"></span>
+                  <span class="t-label">Day 6</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="strat-metrics-wrapper">
+              <div class="awaiting-box" id="base-awaiting">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+                  <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" />
+                </svg>
+                <span>Awaiting simulation results</span>
+              </div>
+              <div class="strat-metrics-list hidden" id="base-metrics">
+                <div class="m-row"><span class="m-key">Recovery rate</span><span class="m-val" id="base-rate">—</span>
+                </div>
+                <div class="m-row"><span class="m-key">Recovered mandates</span><span class="m-val"
+                    id="base-recovered">—</span></div>
+                <div class="m-row"><span class="m-key">Executed attempts</span><span class="m-val"
+                    id="base-attempts">—</span></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Strategy 3: Smart -->
+          <div class="strategy-card strat-smart">
+            <div class="smart-badge-corner">AI + Guardrails</div>
+
+            <div class="strat-top">
+              <div class="strat-icon strat-icon-smart">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2z" stroke="currentColor" stroke-width="2" />
+                  <path d="M8 14s1.5 2 4 2 4-2 4-2" stroke="currentColor" stroke-width="2" />
+                  <circle cx="9" cy="10" r="1.5" fill="currentColor" />
+                  <circle cx="15" cy="10" r="1.5" fill="currentColor" />
+                </svg>
+              </div>
+              <div>
+                <span class="strat-label">Arm 3 · Proposed Solution</span>
+                <h3 class="strat-name">Smart Recovery</h3>
+              </div>
+            </div>
+
+            <div class="strat-policy-tag policy-smart">Policy: Intelligent recovery</div>
+            <p class="strat-desc">Failure classification → AI proposal → Guardrails → Safe action. Human review when
+              required.</p>
+
+            <div class="strat-flow-diagram smart-flow-diagram">
+              <span class="flow-pill">Classify</span>
+              <span class="flow-arrow">→</span>
+              <span class="flow-pill pill-ai">AI Propose</span>
+              <span class="flow-arrow">→</span>
+              <span class="flow-pill pill-guard">Guardrails</span>
+              <span class="flow-arrow">→</span>
+              <span class="flow-pill pill-safe">Safe Action</span>
+            </div>
+
+            <div class="strat-metrics-wrapper">
+              <div class="awaiting-box" id="smart-awaiting">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+                  <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" />
+                </svg>
+                <span>Awaiting simulation results</span>
+              </div>
+              <div class="strat-metrics-list hidden" id="smart-metrics">
+                <div class="m-row"><span class="m-key">Recovery rate</span><span class="m-val highlight-smart"
+                    id="smart-rate">—</span></div>
+                <div class="m-row"><span class="m-key">Recovered mandates</span><span class="m-val"
+                    id="smart-recovered">—</span></div>
+                <div class="m-row"><span class="m-key">Executed attempts</span><span class="m-val"
+                    id="smart-attempts">—</span></div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 4. RESULTS SECTION ─────────────────────────────────────────────────── -->
+    <section id="results" class="section section-alt" aria-label="Performance results">
+      <div class="container">
+
+        <!-- Pre-run Empty State -->
+        <div id="results-empty" class="results-empty-card">
+          <div class="empty-icon-circle">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
+              <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </div>
+          <h3 class="empty-title">Simulation Results Pending</h3>
+          <p class="empty-desc">Run the experiment above to compare actual recovery rate, recovered amount, executed
+            attempts, and verified safety outcomes.</p>
+          <a href="#experiment" class="btn btn-ghost btn-sm">Go to Experiment Setup</a>
+        </div>
+
+        <!-- Post-run Actual Metrics -->
+        <div id="results-content" class="results-filled hidden">
+          <div class="section-header">
+            <div class="section-badge">Empirical Evidence</div>
+            <h2 class="section-title">Actual Simulation Results</h2>
+            <p class="section-sub">Computed live from PostgreSQL simulation tables — <span id="result-seed-label"
+                class="result-seed-tag"></span></p>
+          </div>
+
+          <!-- 3-Arm Recovery Rate Cards -->
+          <div class="rates-hero-grid" aria-label="Recovery rate comparison">
+            <div class="rate-box r-ctrl">
+              <span class="rate-arm-title">Control (Stand Down)</span>
+              <div class="rate-big-num" id="r-ctrl-rate">—</div>
+              <span class="rate-metric-name">Recovery Rate</span>
+              <div class="rate-count-sub"><span id="r-ctrl-rec">—</span> / <span id="r-ctrl-total">—</span> mandates
+                recovered</div>
+            </div>
+
+            <div class="rate-vs-divider">VS</div>
+
+            <div class="rate-box r-base">
+              <span class="rate-arm-title">Baseline (Fixed)</span>
+              <div class="rate-big-num" id="r-base-rate">—</div>
+              <span class="rate-metric-name">Recovery Rate</span>
+              <div class="rate-count-sub"><span id="r-base-rec">—</span> / <span id="r-base-total">—</span> mandates
+                recovered</div>
+            </div>
+
+            <div class="rate-vs-divider">VS</div>
+
+            <div class="rate-box r-smart">
+              <span class="rate-arm-title">Smart (AI + Guardrails)</span>
+              <div class="rate-big-num" id="r-smart-rate">—</div>
+              <span class="rate-metric-name">Recovery Rate</span>
+              <div class="rate-count-sub"><span id="r-smart-rec">—</span> / <span id="r-smart-total">—</span> mandates
+                recovered</div>
+            </div>
+          </div>
+
+          <!-- Full Metrics Comparison Table -->
+          <div class="table-card" role="region" aria-label="Comprehensive metric breakdown">
+            <div class="card-header table-card-header">
+              <h3 class="card-title">Comprehensive Metrics Breakdown</h3>
+              <span class="card-badge">Zero Currency Symbols • Strict Schema Compliance</span>
+            </div>
+            <div class="table-scroll">
+              <table class="metrics-table">
+                <thead>
+                  <tr>
+                    <th scope="col" class="th-metric">Metric</th>
+                    <th scope="col" class="th-c">Control</th>
+                    <th scope="col" class="th-b">Baseline</th>
+                    <th scope="col" class="th-s">Smart</th>
+                  </tr>
+                </thead>
+                <tbody id="comparison-tbody">
+                  <tr>
+                    <td colspan="4" class="td-loading">Fetching backend evaluation metrics...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ── 5. SMART LIFT & SAFETY ───────────────────────────────────────── -->
+          <div class="lift-safety-grid">
+
+            <!-- Smart Recovery Lift -->
+            <div class="card lift-card" aria-label="Smart recovery lift">
+              <div class="card-header">
+                <h3 class="card-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M23 6l-9.5 9.5-5-5L1 18" stroke="currentColor" stroke-width="2" />
+                    <path d="M17 6h6v6" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                  Smart Recovery Lift
+                </h3>
+                <span class="card-badge">Empirical Comparison</span>
+              </div>
+              <p class="card-desc">Observed recovery rate differential achieved by Smart recovery over baseline and
+                control arms.</p>
+
+              <div class="lift-boxes-row">
+                <div class="lift-stat-card" id="lift-vs-control">
+                  <span class="lift-stat-heading">Smart vs Control</span>
+                  <div class="lift-stat-abs">—</div>
+                  <div class="lift-stat-rel"></div>
+                </div>
+                <div class="lift-stat-card" id="lift-vs-baseline">
+                  <span class="lift-stat-heading">Smart vs Baseline</span>
+                  <div class="lift-stat-abs">—</div>
+                  <div class="lift-stat-rel"></div>
+                </div>
+              </div>
+
+              <div class="lift-footer-note">
+                Absolute lift = Smart rate − arm rate. Relative lift = absolute ÷ arm rate.
+              </div>
+            </div>
+
+            <!-- Safety Monitor -->
+            <div class="card safety-card" id="safety-panel" aria-label="Deterministic safety monitor">
+              <div class="card-header">
+                <h3 class="card-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                  Safety Monitor
+                </h3>
+                <span class="card-badge">Deterministic Enforcement</span>
+              </div>
+              <p class="card-desc">Smart is not an unrestricted AI deciding and executing payments. Deterministic
+                guardrails enforce safety boundaries.</p>
+
+              <div id="safety-status-banner" class="safety-banner safety-unknown" role="status" aria-live="polite">
+                <svg class="safety-icon" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+                </svg>
+                <span>Awaiting data</span>
+              </div>
+
+              <div id="safety-violations" class="violations-container"></div>
+
+              <div class="safety-footer-note">
+                Safety verification is computed directly by the backend metrics engine. Status reflects exact database
+                attempt audit logs.
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Human Approval Explanatory Card -->
+          <div class="card approval-explainer-card" aria-label="Human approval governance">
+            <div class="approval-header-row">
+              <span class="approval-tag">Safety Governance</span>
+              <h3 class="approval-headline">Human-in-the-Loop Safeguard</h3>
+            </div>
+            <p class="approval-text">
+              When a Smart recovery proposal encounters elevated risk or ambiguous failure classifications, it
+              automatically routes to human review instead of executing immediately.
+            </p>
+            <div class="approval-flow-bar">
+              <span class="app-step">Smart Proposal</span>
+              <span class="app-arr">→</span>
+              <span class="app-step">Guardrails</span>
+              <span class="app-arr">→</span>
+              <span class="app-step app-review">Human Review when required</span>
+              <span class="app-arr">→</span>
+              <span class="app-step">Pending Retry / Stand Down</span>
+            </div>
+            <div class="approval-statute">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+                <path d="M12 8v4M12 16h.01" stroke="currentColor" stroke-width="2" />
+              </svg>
+              <span><strong>Core Safety Principle:</strong> Human approval changes mandate state; it does not directly
+                execute payment. All financial attempts must route through atomic database validation.</span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ── 6. ARCHITECTURE SECTION ────────────────────────────────────────────── -->
+    <section id="architecture" class="section" aria-label="Conceptual architecture">
+      <div class="container">
+
+        <!-- Section Header -->
+        <div class="section-header arch-header">
+          <div class="arch-header-top">
+            <div class="arch-title-group">
+              <div class="section-badge">System Design</div>
+              <h2 class="section-title">Conceptual Architecture</h2>
+              <p class="section-sub">How a failed payment moves through SettleLoop</p>
+              <div class="arch-disclosure">Conceptual system flow — not a live transaction feed</div>
+            </div>
+            <div class="arch-header-actions">
+              <div class="arch-safety-pill">
+                <span class="pill-glow"></span>
+                <span>AI proposes. Guardrails validate. PostgreSQL RPCs enforce.</span>
+              </div>
+              <button id="btn-replay-arch" class="replay-btn" aria-label="Replay architecture animation"
+                title="Replay architecture flow">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                    stroke-linejoin="round" />
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" stroke="currentColor"
+                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <span>Replay flow</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- Unified Blueprint Canvas -->
+        <div class="arch-blueprint-canvas" id="arch-map">
+
+          <!-- LAYER 1: SIMULATION RUNTIME -->
+          <div class="arch-layer layer-1" id="arch-layer-1">
+            <div class="layer-tag-label">LAYER 1 · SIMULATION RUNTIME FOUNDATION</div>
+            <div class="runtime-strip">
+              <div class="runtime-pill">
+                <span class="rt-dot dot-data"></span>
+                <span class="rt-name">Synthetic Data</span>
+                <span class="rt-desc">Reproducible mandate workloads</span>
+              </div>
+              <div class="runtime-divider">•</div>
+              <div class="runtime-pill">
+                <span class="rt-dot dot-clock"></span>
+                <span class="rt-name">Persisted Virtual Clock</span>
+                <span class="rt-desc">Deterministic zero-wait timeline</span>
+              </div>
+              <div class="runtime-divider">•</div>
+              <div class="runtime-pill">
+                <span class="rt-dot dot-db"></span>
+                <span class="rt-name">Supabase PostgreSQL</span>
+                <span class="rt-desc">State machine &amp; atomic RPC store</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Connector 1 -> 2 -->
+          <div class="arch-flow-arrow-v" id="conn-1">
+            <div class="arrow-line"></div>
+            <div class="arrow-head">▼</div>
+            <div class="conn-pulse pulse-1"></div>
+          </div>
+
+          <!-- LAYER 2: RECOVERY ENGINE -->
+          <div class="arch-layer layer-2" id="arch-layer-2">
+            <div class="layer-tag-label">LAYER 2 · ORCHESTRATION &amp; STRATEGY DISPATCH</div>
+            <div class="engine-hub-node">
+              <div class="engine-hub-left">
+                <div class="engine-hub-icon">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </div>
+                <div class="engine-hub-text">
+                  <span class="engine-hub-title">RECOVERY ENGINE</span>
+                  <span class="engine-hub-sub">Central orchestration router · Dispatches failed mandates into 3 parallel
+                    experiment arms</span>
+                </div>
+              </div>
+              <div class="engine-hub-badge">EVALUATES 3 PARALLEL ARMS</div>
+            </div>
+          </div>
+
+          <!-- Connector 2 -> 3 (Branching) -->
+          <div class="arch-branch-connector" id="conn-2">
+            <svg class="branch-svg" viewBox="0 0 600 32" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M300,0 L300,12 L100,12 L100,32" class="branch-path path-ctrl" />
+              <path d="M300,0 L300,32" class="branch-path path-base" />
+              <path d="M300,0 L300,12 L500,12 L500,32" class="branch-path path-smart" />
+            </svg>
+            <div class="branch-pulse-dot pulse-ctrl"></div>
+            <div class="branch-pulse-dot pulse-base"></div>
+            <div class="branch-pulse-dot pulse-smart"></div>
+          </div>
+
+          <!-- LAYER 3: THREE PARALLEL STRATEGIES -->
+          <div class="arch-layer layer-3" id="arch-layer-3">
+            <div class="layer-tag-label">LAYER 3 · THREE PARALLEL RECOVERY STRATEGIES</div>
+            <div class="arms-grid">
+
+              <!-- Arm 1: Control -->
+              <div class="arch-arm-card arm-ctrl">
+                <div class="arm-top">
+                  <span class="arm-badge-pill ctrl-badge">ARM 1 · BENCHMARK</span>
+                  <h4 class="arm-name">CONTROL</h4>
+                  <div class="arm-rule-tag">No Retry Policy</div>
+                </div>
+
+                <div class="arm-sequence">
+                  <div class="seq-step">
+                    <span class="seq-n">1</span>
+                    <span class="seq-text">Debit Failure</span>
+                  </div>
+                  <div class="seq-arr">→</div>
+                  <div class="seq-step">
+                    <span class="seq-n">2</span>
+                    <span class="seq-text">No-Retry Rule</span>
+                  </div>
+                  <div class="seq-arr">→</div>
+                  <div class="seq-step">
+                    <span class="seq-n">3</span>
+                    <span class="seq-text">Immediate Halt</span>
+                  </div>
+                </div>
+
+                <div class="arm-enforced-box">
+                  <div class="enforced-label">ENFORCED OUTCOME</div>
+                  <div class="outcome-tag-row">
+                    <span class="pill-stand-terminal">🛑 Stand Down (Terminal)</span>
+                  </div>
+                  <p class="arm-summary">Zero retry attempts. Measures unassisted baseline loss.</p>
+                </div>
+              </div>
+
+              <!-- Arm 2: Baseline -->
+              <div class="arch-arm-card arm-base">
+                <div class="arm-top">
+                  <span class="arm-badge-pill base-badge">ARM 2 · INDUSTRY STANDARD</span>
+                  <h4 class="arm-name">BASELINE</h4>
+                  <div class="arm-rule-tag">Fixed Calendar Schedule</div>
+                </div>
+
+                <div class="arm-sequence">
+                  <div class="seq-step">
+                    <span class="seq-n">1</span>
+                    <span class="seq-text">Debit Failure</span>
+                  </div>
+                  <div class="seq-arr">→</div>
+                  <div class="seq-step">
+                    <span class="seq-n">2</span>
+                    <span class="seq-text">D → D+1 → D+3 → D+6</span>
+                  </div>
+                  <div class="seq-arr">→</div>
+                  <div class="seq-step">
+                    <span class="seq-n">3</span>
+                    <span class="seq-text">Blind Dispatch</span>
+                  </div>
+                </div>
+
+                <div class="arm-enforced-box">
+                  <div class="enforced-label">ENFORCED OUTCOME</div>
+                  <div class="outcome-tag-row">
+                    <span class="pill-retry-action">🔄 Scheduled Retry (Rigid)</span>
+                  </div>
+                  <p class="arm-summary">Fixed cadence. Retries blindly without decline reason awareness.</p>
+                </div>
+              </div>
+
+              <!-- Arm 3: Smart -->
+              <div class="arch-arm-card arm-smart">
+                <div class="arm-top">
+                  <span class="arm-badge-pill smart-badge">ARM 3 · PROPOSED SOLUTION</span>
+                  <h4 class="arm-name">SMART</h4>
+                  <div class="arm-rule-tag smart-rule">AI Proposal + Guardrails</div>
+                </div>
+
+                <!-- Compact Smart Decisioning Flow -->
+                <div class="smart-compact-chain">
+                  <div class="smart-chain-step step-classify">
+                    <span class="s-n">1</span>
+                    <span class="s-name">Failure Classifier</span>
+                  </div>
+                  <div class="s-arr">→</div>
+                  <div class="smart-chain-step step-ai">
+                    <span class="s-n">2</span>
+                    <span class="s-name">AI Agent (Gemini)</span>
+                  </div>
+                  <div class="s-arr">→</div>
+                  <div class="smart-chain-step step-guard">
+                    <span class="s-n">3</span>
+                    <span class="s-name">Guardrails</span>
+                  </div>
+                </div>
+
+                <div class="arm-enforced-box smart-enforced-box">
+                  <div class="enforced-label">ENFORCED OUTCOMES</div>
+                  <div class="smart-outcomes-grid">
+                    <span class="pill-retry-action">⚡ Safe Retry</span>
+                    <div class="pill-review-box">
+                      <span>👤 Human Approval (Decision Boundary)</span>
+                      <span class="return-hook">↰ approved → returns to execution</span>
+                    </div>
+                    <span class="pill-stand-terminal">🛑 Stand Down (Terminal)</span>
+                  </div>
+                  <div class="human-statute">
+                    "Human approval changes mandate state; it does not directly execute payment."
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Connector 3 -> 4 (Converging) -->
+          <div class="arch-converge-connector" id="conn-3">
+            <svg class="converge-svg" viewBox="0 0 600 32" preserveAspectRatio="none" aria-hidden="true">
+              <path d="M100,0 L100,20 L300,20 L300,32" class="converge-path path-c" />
+              <path d="M300,0 L300,32" class="converge-path path-b" />
+              <path d="M500,0 L500,20 L300,20 L300,32" class="converge-path path-s" />
+            </svg>
+            <div class="converge-pulse-dot pulse-c"></div>
+            <div class="converge-pulse-dot pulse-b"></div>
+            <div class="converge-pulse-dot pulse-s"></div>
+          </div>
+
+          <!-- LAYER 4: COMMON EXECUTION + EVALUATION -->
+          <div class="arch-layer layer-4" id="arch-layer-4">
+            <div class="layer-tag-label">LAYER 4 · ATOMIC EXECUTION BOUNDARY &amp; EVALUATION</div>
+
+            <div class="layer-4-container">
+
+              <!-- Execution Boundary -->
+              <div class="exec-boundary-strip">
+                <div class="exec-strip-left">
+                  <span class="exec-strip-pill">EXECUTION BOUNDARY</span>
+                  <span class="exec-strip-title">ATOMIC POSTGRESQL RPCs</span>
+                </div>
+                <div class="exec-strip-desc">
+                  Enforces attempt concurrency, locks state, and transitions mandate before &amp; after simulation
+                </div>
+              </div>
+
+              <!-- Down Connector -->
+              <div class="arch-flow-arrow-v arrow-mini">
+                <div class="arrow-line"></div>
+                <div class="arrow-head">▼</div>
+              </div>
+
+              <!-- Payment Simulator -->
+              <div class="sim-strip">
+                <div class="sim-strip-icon">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                    <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2" />
+                    <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                </div>
+                <div class="sim-strip-text">
+                  <strong>PAYMENT SIMULATOR:</strong> Simulates banking rail debit outcome deterministically per seed
+                </div>
+              </div>
+
+              <!-- Down Connector -->
+              <div class="arch-flow-arrow-v arrow-mini">
+                <div class="arrow-line"></div>
+                <div class="arrow-head">▼</div>
+              </div>
+
+              <!-- Audit Logs & Metrics Dual Output -->
+              <div class="eval-strip-row">
+                <div class="eval-strip-item item-audit">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"
+                      stroke="currentColor" stroke-width="2" />
+                    <rect x="9" y="3" width="6" height="4" rx="1" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                  <div class="eval-strip-text">
+                    <span class="es-title">AUDIT LOGS</span>
+                    <span class="es-sub">Immutable attempt, AI &amp; guardrail audit trail</span>
+                  </div>
+                </div>
+
+                <div class="eval-strip-item item-metrics">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
+                    <path d="M18 20V10M12 20V4M6 20v-6" stroke="currentColor" stroke-width="2" />
+                  </svg>
+                  <div class="eval-strip-text">
+                    <span class="es-title">METRICS</span>
+                    <span class="es-sub">Recovery rate, lift vs baseline, &amp; safety stats</span>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ── FOOTER ──────────────────────────────────────────────────────────────── -->
+  <footer class="footer" role="contentinfo">
+    <div class="container footer-container">
+      <div class="footer-left">
+        <span class="footer-logo">SettleLoop</span>
+        <span class="footer-copy">Razorpay Buildathon · Payment Mandate Recovery Intelligence</span>
+      </div>
+      <div class="footer-right">
+        <span>Simulation evaluation environment · No live banking rails connected</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="./app.js"></script>
+</body>
+
+</html>

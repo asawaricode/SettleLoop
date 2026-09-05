@@ -190,7 +190,9 @@ export async function getSimulationMetrics({ runId }) {
 
     arms[arm] = {
       mandateCount,
+      totalMandates: mandateCount, // alias used by step19 stress test assertions
       recoveredCount,
+      totalRecovered: recoveredCount, // convenience alias
       recoveryRate,
       totalAmount: round4(totalAmount),
       recoveredAmount: round4(recoveredAmount),

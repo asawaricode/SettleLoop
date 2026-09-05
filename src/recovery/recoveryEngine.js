@@ -1,6 +1,7 @@
 import { supabase } from '../config/supabase.js';
 import { executeControlPolicy } from './controlPolicy.js';
 import { executeBaselinePolicy } from './baselinePolicy.js';
+import { executeSmartPolicy } from './smartPolicy.js';
 
 /**
  * Routes a single due mandate to its assigned recovery policy.
@@ -9,18 +10,17 @@ import { executeBaselinePolicy } from './baselinePolicy.js';
  * - status === 'pending'
  * - next_action === 'retry'
  * - next_action_day <= currentDay
- * - experiment_arm is supported ('control' or 'baseline')
- *
- * Rejects 'smart' defensively as it is not yet implemented.
+ * - experiment_arm is supported ('control', 'baseline', or 'smart')
  *
  * @param {object} params
  * @param {string} params.runId - simulation_runs.id
  * @param {object} params.mandate - Mandate record from database
  * @param {number} params.currentDay - Current simulation day
  * @param {number} params.seed - Random seed from simulation run
+ * @param {object} [params.run] - simulation_runs row (required for 'smart' arm)
  * @returns {Promise<object>} Updated mandate record
  */
-export async function processMandate({ runId, mandate, currentDay, seed }) {
+export async function processMandate({ runId, mandate, currentDay, seed, run }) {
   if (!runId || typeof runId !== 'string' || runId.trim() === '') {
     throw new Error('recoveryEngine: runId must be a non-empty string');
   }
@@ -53,8 +53,12 @@ export async function processMandate({ runId, mandate, currentDay, seed }) {
     case 'baseline':
       return await executeBaselinePolicy({ runId, mandate, currentDay, seed });
 
-    case 'smart':
-      throw new Error('Smart policy is not yet enabled in Recovery Engine');
+    case 'smart': {
+      if (!run) {
+        throw new Error('Smart policy is not yet enabled in Recovery Engine (run parameter required)');
+      }
+      return await executeSmartPolicy({ runId, mandate, currentDay, seed, run });
+    }
 
     default:
       throw new Error(`recoveryEngine: unsupported experiment_arm "${mandate.experiment_arm}"`);
@@ -75,6 +79,7 @@ export async function processMandate({ runId, mandate, currentDay, seed }) {
  * @param {number} params.currentDay - Current simulation day
  * @param {number} params.seed - Random seed from simulation run
  * @param {string[]} [params.allowedArms=['control', 'baseline']] - Allowed experiment arms
+ * @param {object} [params.run] - simulation_runs row; required when allowedArms includes 'smart'
  * @returns {Promise<{
  *   day: number,
  *   processedCount: number,
@@ -90,6 +95,7 @@ export async function processDueMandates({
   currentDay,
   seed,
   allowedArms = ['control', 'baseline'],
+  run,
 }) {
   if (!runId || typeof runId !== 'string' || runId.trim() === '') {
     throw new Error('recoveryEngine: runId must be a non-empty string');
@@ -152,6 +158,7 @@ export async function processDueMandates({
       mandate: freshMandate,
       currentDay,
       seed,
+      run,
     });
 
     processedCount++;

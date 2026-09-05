@@ -49,6 +49,7 @@ function assignArm(index) {
 const DEFAULTS = {
   seed: 42,
   mandateCount: 30,
+  maxDays: 10,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,6 +63,7 @@ const DEFAULTS = {
  * @param {object} [config]
  * @param {number} [config.seed=42]          - Deterministic PRNG seed (uint32).
  * @param {number} [config.mandateCount=30]  - Number of mandates to generate.
+ * @param {number} [config.maxDays=10]       - Maximum simulation days.
  *
  * @returns {Promise<{ simulationRunId: string, mandateIds: string[] }>}
  */
@@ -73,10 +75,20 @@ export async function generateSyntheticData(config = {}) {
     config.mandateCount !== undefined
       ? config.mandateCount
       : DEFAULTS.mandateCount;
+  const maxDays =
+    config.maxDays !== undefined
+      ? config.maxDays
+      : DEFAULTS.maxDays;
 
   if (!Number.isInteger(mandateCount) || mandateCount < 1) {
     throw new Error(
       `mandateCount must be a positive integer, got: ${mandateCount}`
+    );
+  }
+
+  if (!Number.isInteger(maxDays) || maxDays < 1) {
+    throw new Error(
+      `maxDays must be a positive integer, got: ${maxDays}`
     );
   }
 
@@ -88,7 +100,7 @@ export async function generateSyntheticData(config = {}) {
     .insert({
       random_seed: seedInt,
       current_day: 0,
-      max_days: 10,
+      max_days: maxDays,
       status: "running",
     })
     .select("id")

@@ -1,0 +1,25 @@
+{
+  "version": 2,
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/dashboard/",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/dashboard/",
+      "permanent": false
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    }
+  ]
+}
