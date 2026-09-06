@@ -57,7 +57,7 @@ All three strategies operate against the identical synthetic simulation workload
 | **Deterministic Guardrails** | Pure safety rules validate every AI proposal; hard declines are permanently stood down and attempt limits are strictly enforced. |
 | **Human Approval Workflow** | Low-confidence proposals or missing consent trigger a formal `pending_human_approval` state with bounded virtual-day expiration. |
 | **Atomic PostgreSQL RPCs** | Sensitive state transitions, attempt caps (max 4), and idempotency keys are enforced via database stored procedures. |
-| **Payment Simulator** | Cryptographic hash-based payment simulation guarantees reproducible success/failure outcomes for given mandate seeds. |
+| **Payment Simulator** | Deterministic hash-based payment simulation produces reproducible success/failure outcomes for a given mandate seed and simulation inputs.|
 | **Audit Logging** | Append-only audit table captures every decision, actor, reasoning, inputs, and outputs with zero secret exposure. |
 | **Comprehensive Metrics** | Calculates recovery rates, recovered amounts, attempts per recovery, average recovery days, empirical lift, and safety violations. |
 | **Interactive Dashboard** | Single-page UI with Light/Dark themes, stepper-driven configuration, real-time status indicators, and live metric tables. |
