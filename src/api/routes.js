@@ -3,6 +3,7 @@ import { supabase } from '../config/supabase.js';
 import { generateSyntheticData } from '../generators/syntheticDataGenerator.js';
 import { runAllRecovery } from '../recovery/recoveryRunner.js';
 import { getSimulationMetrics } from '../evaluation/metrics.js';
+import { approveHumanApproval, rejectHumanApproval } from '../recovery/humanApproval.js';
 
 const router = Router();
 
@@ -134,6 +135,87 @@ router.get('/simulations/:runId/metrics', async (req, res) => {
       return res.status(404).json({ error: 'Simulation run not found' });
     }
     return res.status(500).json({ error: 'Failed to retrieve simulation metrics' });
+  }
+});
+
+// ── POST /api/approvals/:id/resolve ────────────────────────────────────────
+//
+// Resolves a pending human approval request.
+//
+// Body: { decision: 'approved'|'rejected', decidedBy: string, decidedDay: number, decisionReason?: string }
+//
+// approve path → calls resolve_approval('approved') via approveHumanApproval().
+//               Mandate returns to 'pending' with next_action='retry'.
+// reject  path → calls resolve_approval('rejected') via rejectHumanApproval().
+//               Mandate transitions to 'stood_down'.
+//
+// Both paths enforce:
+//   - Approval must be in 'pending' status (checked inside approve/rejectHumanApproval).
+//   - Max 4 total attempts enforced by the existing resolve_approval RPC.
+//   - UPI AutoPay retry guardrail is preserved (execute_attempt is NOT called here).
+// ---------------------------------------------------------------------------
+router.post('/approvals/:id/resolve', async (req, res) => {
+  try {
+    const { id: approvalId } = req.params;
+
+    if (!approvalId || typeof approvalId !== 'string' || approvalId.trim() === '') {
+      return res.status(400).json({ error: 'approvalId path parameter is required' });
+    }
+
+    if (!req.body || typeof req.body !== 'object') {
+      return res.status(400).json({ error: 'Request body must be a JSON object' });
+    }
+
+    const { decision, decidedBy, decidedDay, decisionReason = null } = req.body;
+
+    if (decision !== 'approved' && decision !== 'rejected') {
+      return res.status(400).json({ error: 'decision must be "approved" or "rejected"' });
+    }
+
+    if (!decidedBy || typeof decidedBy !== 'string' || decidedBy.trim() === '') {
+      return res.status(400).json({ error: 'decidedBy must be a non-empty string' });
+    }
+
+    if (
+      decidedDay === undefined ||
+      typeof decidedDay !== 'number' ||
+      !Number.isInteger(decidedDay) ||
+      decidedDay < 0
+    ) {
+      return res.status(400).json({ error: 'decidedDay must be a non-negative integer' });
+    }
+
+    let result;
+    if (decision === 'approved') {
+      result = await approveHumanApproval({ approvalId, decidedBy, decidedDay, decisionReason });
+    } else {
+      result = await rejectHumanApproval({ approvalId, decidedBy, decidedDay, decisionReason });
+    }
+
+    return res.status(200).json({
+      approvalId: result.approvalId,
+      decision: result.status,        // 'approved' | 'rejected'
+      mandate: {
+        id: result.mandate.id,
+        status: result.mandate.status,
+        next_action: result.mandate.next_action,
+        next_action_day: result.mandate.next_action_day,
+        attempts_used: result.mandate.attempts_used,
+      },
+    });
+  } catch (err) {
+    const msg = err.message || '';
+    if (
+      msg.includes('not found') ||
+      msg.includes('22P02') ||
+      msg.includes('approval request') && msg.includes('not found')
+    ) {
+      return res.status(404).json({ error: 'Approval request not found' });
+    }
+    if (msg.includes('is not pending')) {
+      return res.status(409).json({ error: msg });
+    }
+    return res.status(500).json({ error: 'Failed to resolve approval request' });
   }
 });
 

@@ -29,6 +29,7 @@ import { supabase } from '../config/supabase.js';
 import { simulatePayment } from '../simulators/paymentSimulator.js';
 import { logAudit } from '../utils/auditLogger.js';
 import { assertTransition } from '../stateMachine/mandateStateMachine.js';
+import { assertMandateAction } from './mandateTransitions.js';
 import { classifyFailure } from './failureClassifier.js';
 import { proposeSmartRecoveryAction } from './smartAgent.js';
 import { validateGuardrails } from './guardrails.js';
@@ -251,6 +252,8 @@ async function exhaustMandate({ runId, mandate, currentDay, attempt }) {
  * Schedules a future retry via set_mandate_action('retry', nextActionDay).
  */
 async function scheduleRetry({ runId, mandate, currentDay, attempt, retryDay, reasoning }) {
+  assertMandateAction(mandate.status, 'retry');
+
   const { error: retryErr } = await supabase.rpc('set_mandate_action', {
     p_run_id: runId,
     p_mandate_id: mandate.id,
