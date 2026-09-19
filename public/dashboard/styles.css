@@ -4175,5 +4175,179 @@ input {
     opacity: 1 !important;
     transform: none !important;
     transition: none !important;
-  }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   DECISION REPLAY
+   ───────────────────────────────────────────────────────────────────────────── */
+
+.replay-launch-row {
+  display: flex;
+  justify-content: flex-start;
+  margin: 12px 0 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.replay-container {
+  margin-top: 18px;
+}
+
+.replay-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: relative;
+  max-height: 520px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 6px;
+}
+
+.replay-timeline::-webkit-scrollbar {
+  width: 5px;
+}
+
+.replay-timeline::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.replay-timeline::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+.replay-event {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 0 0 18px 0;
+  position: relative;
+}
+
+/* Vertical connector line between events */
+.replay-event:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 32px;
+  width: 2px;
+  bottom: 0;
+  background: var(--border);
+}
+
+.replay-event-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 13px;
+  position: relative;
+  z-index: 1;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.replay-icon-initial   { background: var(--ctrl-bg);  color: var(--ctrl-text);  border-color: var(--ctrl-border);  }
+.replay-icon-attempt   { background: var(--base-bg);  color: var(--base-text);  border-color: var(--base-border);  }
+.replay-icon-classify  { background: var(--amber-bg); color: var(--amber-text); border-color: var(--amber-border); }
+.replay-icon-ai        { background: var(--smart-bg); color: var(--smart-text); border-color: var(--smart-border); }
+.replay-icon-guard     { background: var(--smart-bg); color: var(--smart-text); border-color: var(--smart-border); }
+.replay-icon-approval  { background: var(--amber-bg); color: var(--amber-text); border-color: var(--amber-border); }
+.replay-icon-terminal  { background: var(--surface-2); color: var(--text-2);    border-color: var(--border);       }
+
+.replay-event-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.replay-event-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.replay-event-type {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.replay-event-day {
+  font-size: 10.5px;
+  color: var(--text-3);
+  font-family: 'JetBrains Mono', monospace;
+  margin-left: auto;
+}
+
+.replay-event-card {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
+.replay-field {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin: 2px 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  flex-wrap: wrap;
+}
+
+.replay-field-label {
+  color: var(--text-3);
+  font-weight: 600;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.replay-field-value {
+  color: var(--text-1);
+  font-weight: 500;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.replay-outcome-success { color: var(--success-text, #16a34a); font-weight: 700; }
+.replay-outcome-failure { color: var(--error, #dc2626);        font-weight: 700; }
+
+.replay-result-passed  { color: var(--success-text, #16a34a); font-weight: 700; }
+.replay-result-blocked { color: var(--error, #dc2626);        font-weight: 700; }
+
+.replay-note-box {
+  margin-top: 6px;
+  background: var(--surface);
+  border: 1px solid var(--smart-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  font-size: 11px;
+  color: var(--text-2);
+  line-height: 1.5;
+}
+
+.replay-note-label {
+  font-weight: 700;
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--smart-text);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .replay-event::after {
+    transition: none;
+  }
+}

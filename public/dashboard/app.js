@@ -1071,8 +1071,8 @@ async function loadMandateTrace(mandateId) {
 
     setText('tr-arm', data.arm ? data.arm.toUpperCase() : '—');
     setText('tr-status', data.status || '—');
-    setText('tr-category', data.failureCategory || 'none');
-    setText('tr-confidence', data.confidence !== null && data.confidence !== undefined ? (Number(data.confidence) * 100).toFixed(0) + '%' : '—');
+    setText('tr-category', data.failureCategory && data.failureCategory !== 'none' ? data.failureCategory : 'None');
+    setText('tr-confidence', (data.confidence !== null && data.confidence !== undefined) ? (Number(data.confidence) * 100).toFixed(0) + '%' : 'N/A');
 
     if (data.aiProposal) {
       const p = data.aiProposal;
@@ -1080,7 +1080,7 @@ async function loadMandateTrace(mandateId) {
       const reasonTxt = p.reasoning ? ` — ${p.reasoning}` : '';
       setText('tr-ai-proposal', `${p.action}${delayTxt}${reasonTxt}`);
     } else {
-      setText('tr-ai-proposal', 'No AI proposal (direct deterministic policy)');
+      setText('tr-ai-proposal', 'No AI proposal — direct deterministic policy');
     }
 
     if (data.guardrailResult) {
@@ -1089,31 +1089,237 @@ async function loadMandateTrace(mandateId) {
       const reasonsStr = Array.isArray(gr.reasons) && gr.reasons.length > 0 ? ': ' + gr.reasons.join('; ') : '';
       setText('tr-guardrail', `${allowedStr}${reasonsStr}`);
     } else {
-      setText('tr-guardrail', 'Standard deterministic boundaries applied');
+      setText('tr-guardrail', 'Not recorded');
     }
 
     setText('tr-final-action', data.finalAction || '—');
-    setText('tr-retry-day', data.retryDay !== null && data.retryDay !== undefined ? `Day ${data.retryDay}` : 'N/A');
+    setText('tr-retry-day', (data.status === 'pending' && data.retryDay !== null && data.retryDay !== undefined) ? `Day ${data.retryDay}` : 'N/A');
 
     if (data.humanApproval) {
       const ha = data.humanApproval;
       setText('tr-approval-state', `Status: ${ha.status} (ID: ${ha.id.slice(0, 8)}… expires Day ${ha.expiresDay ?? '?'})`);
     } else {
-      setText('tr-approval-state', 'Not required / Auto-approved by guardrails');
+      setText('tr-approval-state', 'Not required');
     }
 
     show('trace-details');
     hide('trace-empty-state');
+    // Show the Replay Decision button; store current mandate ID for replay
+    show('replay-launch-row');
+    hide('replay-container');
+    const tl = $('replay-timeline');
+    if (tl) tl.innerHTML = '';
+    // Tag the replay button with the mandate we just traced
+    const rBtn = $('btn-replay-decision');
+    if (rBtn) rBtn.dataset.mandateId = id;
   } catch (err) {
     showAlert('trace-alert', 'error', 'Failed to load mandate trace: ' + esc(err.message));
     hide('trace-details');
     show('trace-empty-state');
+    hide('replay-launch-row');
+    hide('replay-container');
   } finally {
     if (btn) btn.disabled = false;
   }
 }
 
-// ── 2. Pending Human Approvals ─────────────────────────────
+// ── 1b. Decision Replay ────────────────────────────────────────────────────
+
+// Map eventType → { icon emoji, icon CSS class, human label }
+const REPLAY_EVENT_META = {
+  initial_state:          { icon: '⬤', cls: 'replay-icon-initial',  label: 'Initial State' },
+  attempt:                { icon: '⚡', cls: 'replay-icon-attempt',  label: 'Payment Attempt' },
+  ai_proposal:            { icon: '🤖', cls: 'replay-icon-ai',      label: 'Recovery Proposal' },
+  guardrail_evaluation:   { icon: '🛡', cls: 'replay-icon-guard',   label: 'Guardrail Evaluation' },
+  approval_event:         { icon: '👤', cls: 'replay-icon-approval', label: 'Human Approval' },
+  state_transition:       { icon: '🏁', cls: 'replay-icon-terminal', label: 'State Transition' },
+};
+
+/** Build one replay-event DOM element for a timeline entry. */
+function buildReplayEventEl(event) {
+  const meta = REPLAY_EVENT_META[event.eventType] || { icon: '·', cls: '', label: event.eventType };
+  const d = event.data || {};
+
+  const el = document.createElement('div');
+  el.className = 'replay-event';
+  el.setAttribute('data-event-type', event.eventType);
+
+  const dayStr = (event.day !== null && event.day !== undefined) ? `Day ${event.day}` : '';
+
+  let fieldsHtml = '';
+
+  switch (event.eventType) {
+    case 'initial_state':
+      fieldsHtml += field('Arm', esc(d.arm ? d.arm.toUpperCase() : '—'));
+      fieldsHtml += field('First Due', (d.firstDueDay !== null && d.firstDueDay !== undefined) ? `Day ${d.firstDueDay}` : '—');
+      fieldsHtml += field('Initial Status', esc(d.status || 'pending'));
+      break;
+
+    case 'attempt': {
+      const outcomeClass = d.outcome === 'success' ? 'replay-outcome-success' : 'replay-outcome-failure';
+      fieldsHtml += field('Attempt #', esc(String(d.attemptNumber ?? '—')));
+      fieldsHtml += field('Outcome', `<span class="${outcomeClass}">${esc(d.outcome || '—')}</span>`);
+      if (d.declineCategory) fieldsHtml += field('Category', esc(d.declineCategory));
+      if (d.declineCode) fieldsHtml += field('Code', esc(d.declineCode));
+      if (d.retryEligible !== null && d.retryEligible !== undefined) {
+        fieldsHtml += field('Retry Eligible', esc(d.retryEligible ? 'Yes' : 'No'));
+      }
+      break;
+    }
+
+    case 'ai_proposal': {
+      const src = d.source || 'unknown';
+      fieldsHtml += field('Action', esc(d.action || '—'));
+      fieldsHtml += field('Source', esc(src === 'fallback' ? 'Fallback heuristic' : src === 'ai' ? 'Gemini AI' : src));
+      if (d.retryDelayDays !== null && d.retryDelayDays !== undefined) {
+        fieldsHtml += field('Retry Delay', `${esc(String(d.retryDelayDays))} days`);
+      }
+      if (d.reasoning) fieldsHtml += field('Reasoning', esc(d.reasoning));
+      // Rule 4 transparency — always shown when an ai_proposal event exists
+      fieldsHtml += `<div class="replay-note-box">
+        <div class="replay-note-label">Rule 4 — Confidence Guardrail</div>
+        <div>${esc(d.confidenceNote || 'NON-TRIGGERING UNDER CURRENT CONFIGURATION — confidence is deterministically assigned 0.80; Gemini currently does not provide a confidence signal.')}</div>
+      </div>`;
+      break;
+    }
+
+    case 'guardrail_evaluation': {
+      const resultCls = d.result === 'PASSED' ? 'replay-result-passed' : 'replay-result-blocked';
+      fieldsHtml += field('Result', `<span class="${resultCls}">${esc(d.result || '—')}</span>`);
+      if (Array.isArray(d.reasons) && d.reasons.length > 0) {
+        fieldsHtml += field('Reasons', esc(d.reasons.join('; ')));
+      } else if (d.reasoning) {
+        fieldsHtml += field('Reasoning', esc(d.reasoning));
+      } else {
+        fieldsHtml += field('Details', 'Not recorded');
+      }
+      break;
+    }
+
+    case 'approval_event':
+      fieldsHtml += field('Status', esc(d.status || '—'));
+      if (d.expiresDay !== null && d.expiresDay !== undefined) fieldsHtml += field('Expires', `Day ${esc(String(d.expiresDay))}`);
+      if (d.decidedBy) fieldsHtml += field('Decided By', esc(d.decidedBy));
+      if (d.decisionReason) fieldsHtml += field('Reason', esc(d.decisionReason));
+      break;
+
+    case 'state_transition':
+      fieldsHtml += field('Status', esc(d.status || '—'));
+      if (d.status === 'recovered') {
+        fieldsHtml += field('Outcome', 'Mandate recovered via successful payment');
+      } else if (d.status === 'stood_down' || d.status === 'exhausted') {
+        fieldsHtml += field('Terminal Reason', esc(d.terminalReason || 'Not recorded'));
+        if (d.nextAction && d.nextAction !== 'none') fieldsHtml += field('Terminal Action', esc(d.nextAction));
+      } else if (d.status === 'pending') {
+        if (d.nextAction) fieldsHtml += field('Next Action', esc(d.nextAction));
+        if (d.nextActionDay !== null && d.nextActionDay !== undefined) {
+          fieldsHtml += field('Scheduled Day', `Day ${esc(String(d.nextActionDay))}`);
+        }
+      }
+      fieldsHtml += field('Lifecycle', d.isFinal ? 'Terminal — lifecycle complete' : 'In Progress — pending further evaluation');
+      break;
+
+    default:
+      fieldsHtml += field('Data', esc(JSON.stringify(d)));
+  }
+
+  el.innerHTML = `
+    <div class="replay-event-icon ${meta.cls}" title="${esc(meta.label)}" aria-hidden="true">${meta.icon}</div>
+    <div class="replay-event-body">
+      <div class="replay-event-header">
+        <span class="replay-event-type">${esc(meta.label)}</span>
+        ${dayStr ? `<span class="replay-event-day">${esc(dayStr)}</span>` : ''}
+      </div>
+      <div class="replay-event-card">${fieldsHtml}</div>
+    </div>`;
+
+  return el;
+}
+
+/** Render a single key-value field row. value may contain safe HTML. */
+function field(label, valueHtml) {
+  return `<div class="replay-field">
+    <span class="replay-field-label">${esc(label)}</span>
+    <span class="replay-field-value">${valueHtml}</span>
+  </div>`;
+}
+
+/** Fetch replay data and render the timeline for the given mandateId. */
+async function replayDecision(mandateId) {
+  const container = $('replay-container');
+  const timeline = $('replay-timeline');
+  const alertEl = $('replay-alert');
+  const btn = $('btn-replay-decision');
+
+  if (!container || !timeline) return;
+
+  // Clear previous state
+  if (alertEl) { alertEl.className = 'alert hidden'; alertEl.textContent = ''; }
+  timeline.innerHTML = '';
+  if (btn) btn.disabled = true;
+
+  show('replay-container');
+
+  try {
+    const data = await apiGet('/api/mandates/' + encodeURIComponent(mandateId) + '/replay');
+
+    // Keep header in sync with authoritative replay response
+    if (data.arm) setText('tr-arm', data.arm.toUpperCase());
+    if (data.status) setText('tr-status', data.status);
+    if (data.failureCategory) {
+      setText('tr-category', data.failureCategory !== 'none' ? data.failureCategory : 'None');
+    }
+    if (data.confidence !== undefined) {
+      setText('tr-confidence', data.confidence || 'N/A');
+    }
+    if (data.aiProposal) {
+      const p = data.aiProposal;
+      const delayTxt = p.retryDelayDays !== null && p.retryDelayDays !== undefined ? ` (delay: ${p.retryDelayDays} days)` : '';
+      const reasonTxt = p.reasoning ? ` — ${p.reasoning}` : '';
+      setText('tr-ai-proposal', `${p.action}${delayTxt}${reasonTxt}`);
+    } else {
+      setText('tr-ai-proposal', 'No AI proposal — direct deterministic policy');
+    }
+    if (data.guardrailResult) {
+      const gr = data.guardrailResult;
+      const allowedStr = gr.allowed ? '✓ ALLOWED' : '✗ BLOCKED';
+      const reasonsStr = Array.isArray(gr.reasons) && gr.reasons.length > 0 ? ': ' + gr.reasons.join('; ') : '';
+      setText('tr-guardrail', `${allowedStr}${reasonsStr}`);
+    } else {
+      setText('tr-guardrail', 'Not recorded');
+    }
+    if (data.finalAction !== undefined) setText('tr-final-action', data.finalAction || '—');
+    setText('tr-retry-day', (data.status === 'pending' && data.retryDay !== null && data.retryDay !== undefined) ? `Day ${data.retryDay}` : 'N/A');
+    if (data.humanApproval) {
+      const ha = data.humanApproval;
+      setText('tr-approval-state', `Status: ${ha.status} (ID: ${ha.id.slice(0, 8)}… expires Day ${ha.expiresDay ?? '?'})`);
+    } else {
+      setText('tr-approval-state', 'Not required');
+    }
+
+    if (!data.timeline || data.timeline.length === 0) {
+      if (alertEl) {
+        alertEl.className = 'alert alert-error';
+        alertEl.textContent = 'No timeline data available for this mandate.';
+        show(alertEl);
+      }
+      return;
+    }
+
+    for (const event of data.timeline) {
+      timeline.appendChild(buildReplayEventEl(event));
+    }
+  } catch (err) {
+    if (alertEl) {
+      alertEl.className = 'alert alert-error';
+      alertEl.textContent = 'Failed to load replay: ' + esc(err.message || String(err));
+      show(alertEl);
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 async function fetchPendingApprovals() {
   hideAlert('approvals-alert');
   const feed = $('approvals-feed');
@@ -1290,6 +1496,18 @@ function init() {
     hide('trace-details');
     show('trace-empty-state');
     hideAlert('trace-alert');
+    hide('replay-launch-row');
+    hide('replay-container');
+    const tl = $('replay-timeline');
+    if (tl) tl.innerHTML = '';
+  });
+
+  // Replay Decision button: only fires when user explicitly clicks it
+  $('btn-replay-decision')?.addEventListener('click', () => {
+    const mandateId = $('btn-replay-decision')?.dataset?.mandateId
+      || $('trace-mandate-input')?.value?.trim()
+      || $('trace-mandate-select')?.value?.trim();
+    if (mandateId) replayDecision(mandateId);
   });
 
   // Direct approval resolution

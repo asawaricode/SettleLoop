@@ -262,6 +262,7 @@ router.get('/mandates/:id/trace', async (req, res) => {
 
     const aiLog = (auditLogs || []).find(l => l.actor === 'smart_agent' || l.decision_type === 'ai_proposal');
     const guardrailLog = (auditLogs || []).find(l => l.actor === 'guardrails' || l.decision_type === 'guardrail_decision');
+    const hasAiProposal = Boolean(aiLog || approval?.proposed_action);
 
     return res.status(200).json({
       mandateId: mandate.id,
@@ -273,13 +274,13 @@ router.get('/mandates/:id/trace', async (req, res) => {
         retryDelayDays: aiLog.output?.retryDelayDays ?? null,
         reasoning: aiLog.reasoning || '',
       } : null,
-      confidence: approval?.proposed_action?.confidence ?? 0.8,
+      confidence: approval?.proposed_action?.confidence ?? (hasAiProposal ? 0.8 : null),
       guardrailResult: guardrailLog ? {
         allowed: guardrailLog.output?.allowed ?? true,
         reasons: guardrailLog.input?.reasons || (guardrailLog.reasoning ? [guardrailLog.reasoning] : ['Guardrails passed']),
       } : null,
       finalAction: mandate.next_action,
-      retryDay: mandate.next_action_day,
+      retryDay: (mandate.status === 'pending' && mandate.next_action === 'retry') ? mandate.next_action_day : null,
       humanApproval: approval ? {
         id: approval.id,
         status: approval.status,
@@ -290,6 +291,238 @@ router.get('/mandates/:id/trace', async (req, res) => {
     return res.status(500).json({ error: 'Failed to retrieve mandate trace' });
   }
 });
+
+// ── GET /api/mandates/:id/replay ────────────────────────────────────────────
+//
+// Decision Replay — returns a full chronological lifecycle timeline for one
+// mandate derived entirely from authoritative stored data (mandates, attempts,
+// audit_logs, approval_requests). READ-ONLY: never modifies any data.
+//
+// Response shape:
+//   {
+//     mandateId, arm, status, attemptsUsed, firstDueDay,
+//     failureCategory, confidence, confidenceValue, aiProposal, guardrailResult,
+//     finalAction, retryDay, humanApproval,
+//     timeline: [
+//       { eventType, day, data: { ... } }  // ordered chronologically
+//     ]
+//   }
+//
+// eventType values:
+//   'initial_state'         — mandate configuration at creation
+//   'attempt'               — a payment attempt execution record
+//   'ai_proposal'           — Smart-arm AI / fallback proposal
+//   'guardrail_evaluation'  — guardrail check result
+//   'approval_event'        — human approval routed or resolved
+//   'state_transition'      — terminal or scheduled-action state change
+// ---------------------------------------------------------------------------
+router.get('/mandates/:id/replay', async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id || typeof id !== 'string' || id.trim() === '') {
+      return res.status(400).json({ error: 'Mandate ID is required' });
+    }
+    const mid = id.trim();
+
+    // ── 1. Mandate ──────────────────────────────────────────────────────────
+    const { data: mandate, error: mErr } = await supabase
+      .from('mandates')
+      .select('id, run_id, experiment_arm, status, next_action, next_action_day, attempts_used, first_due_day, terminal_reason, created_at')
+      .eq('id', mid)
+      .maybeSingle();
+
+    if (mErr || !mandate) {
+      return res.status(404).json({ error: 'Mandate not found' });
+    }
+
+    // ── 2. All attempts (ascending by attempt_number) ───────────────────────
+    const { data: attempts } = await supabase
+      .from('attempts')
+      .select('id, attempt_number, executed_day, outcome, decline_code, decline_category, retry_eligible, created_at')
+      .eq('mandate_id', mid)
+      .order('attempt_number', { ascending: true });
+
+    // ── 3. All audit logs (ascending by created_at) ─────────────────────────
+    const { data: auditLogs } = await supabase
+      .from('audit_logs')
+      .select('id, attempt_id, actor, decision_type, input, output, reasoning, day, created_at')
+      .eq('mandate_id', mid)
+      .order('created_at', { ascending: true });
+
+    // ── 4. All approval requests (ascending) ────────────────────────────────
+    const { data: approvals } = await supabase
+      .from('approval_requests')
+      .select('id, status, proposed_action, expires_day, created_day, decided_by, decided_at, decision_reason, created_at')
+      .eq('mandate_id', mid)
+      .order('created_at', { ascending: true });
+
+    // ── 5. Build timeline from authoritative stored data ────────────────────
+    const timeline = [];
+
+    // Event: initial_state
+    timeline.push({
+      eventType: 'initial_state',
+      day: mandate.first_due_day ?? 0,
+      data: {
+        arm: mandate.experiment_arm,
+        firstDueDay: mandate.first_due_day,
+        status: 'pending',
+      },
+    });
+
+    // Event: attempt (for every executed attempt row)
+    for (const attempt of (attempts || [])) {
+      timeline.push({
+        eventType: 'attempt',
+        day: attempt.executed_day,
+        data: {
+          attemptNumber: attempt.attempt_number,
+          executedDay: attempt.executed_day,
+          outcome: attempt.outcome,
+          declineCategory: attempt.decline_category || null,
+          declineCode: attempt.decline_code || null,
+          retryEligible: attempt.retry_eligible ?? null,
+        },
+      });
+    }
+
+    // Event: ai_proposal (only for actual AI / fallback proposal audit records)
+    const aiLogs = (auditLogs || []).filter(l =>
+      l.decision_type === 'ai_proposal' || l.actor === 'smart_agent'
+    );
+    for (const aiLog of aiLogs) {
+      const proposalSource = aiLog.output?.source || 'unknown';
+      timeline.push({
+        eventType: 'ai_proposal',
+        day: aiLog.day ?? null,
+        data: {
+          action: aiLog.output?.action || null,
+          source: proposalSource,
+          retryDelayDays: aiLog.output?.retryDelayDays ?? null,
+          reasoning: aiLog.reasoning || null,
+          confidenceNote: 'NON-TRIGGERING UNDER CURRENT CONFIGURATION — confidence is deterministically assigned 0.80; Gemini currently does not provide a confidence signal.',
+        },
+      });
+    }
+
+    // Event: guardrail_evaluation (only for actual guardrail evaluation audit records)
+    const guardrailLogs = (auditLogs || []).filter(l =>
+      l.decision_type === 'guardrail_decision' || l.actor === 'guardrails'
+    );
+    for (const grLog of guardrailLogs) {
+      const allowed = grLog.output?.allowed ?? true;
+      timeline.push({
+        eventType: 'guardrail_evaluation',
+        day: grLog.day ?? null,
+        data: {
+          result: allowed ? 'PASSED' : 'BLOCKED',
+          allowed,
+          reasons: grLog.input?.reasons || (grLog.reasoning ? [grLog.reasoning] : []),
+          reasoning: grLog.reasoning || null,
+        },
+      });
+    }
+
+    // Event: approval_event (only for actual approval records)
+    for (const apr of (approvals || [])) {
+      timeline.push({
+        eventType: 'approval_event',
+        day: apr.created_day ?? null,
+        data: {
+          approvalId: apr.id,
+          status: apr.status,
+          proposedAction: apr.proposed_action || null,
+          expiresDay: apr.expires_day ?? null,
+          decidedBy: apr.decided_by || null,
+          decisionReason: apr.decision_reason || null,
+          decidedAt: apr.decided_at || null,
+        },
+      });
+    }
+
+    // Event: state_transition (terminal outcome or scheduled in-progress state)
+    const isTerminal = ['recovered', 'stood_down', 'exhausted'].includes(mandate.status);
+    const lastAttempt = (attempts && attempts.length > 0) ? attempts[attempts.length - 1] : null;
+    const transitionDay = isTerminal
+      ? (lastAttempt?.executed_day ?? mandate.first_due_day ?? 0)
+      : (mandate.next_action_day ?? mandate.first_due_day ?? null);
+
+    timeline.push({
+      eventType: 'state_transition',
+      day: transitionDay,
+      data: {
+        status: mandate.status,
+        nextAction: mandate.next_action || null,
+        nextActionDay: (mandate.status === 'pending' && mandate.next_action === 'retry') ? mandate.next_action_day : null,
+        terminalReason: mandate.terminal_reason || (mandate.status === 'recovered' ? 'payment_success' : null),
+        isFinal: isTerminal,
+      },
+    });
+
+    // Chronological sort: initial_state first, state_transition last, day ascending,
+    // and causal order within same day (attempt -> ai_proposal -> guardrail -> approval).
+    const TYPE_ORDER = {
+      initial_state: 0,
+      attempt: 1,
+      ai_proposal: 2,
+      guardrail_evaluation: 3,
+      approval_event: 4,
+      state_transition: 5,
+    };
+
+    timeline.sort((a, b) => {
+      if (a.eventType === 'initial_state') return -1;
+      if (b.eventType === 'initial_state') return 1;
+      if (a.eventType === 'state_transition') return 1;
+      if (b.eventType === 'state_transition') return -1;
+
+      const da = a.day ?? Infinity;
+      const db = b.day ?? Infinity;
+      if (da !== db) return da - db;
+
+      const oa = TYPE_ORDER[a.eventType] ?? 99;
+      const ob = TYPE_ORDER[b.eventType] ?? 99;
+      return oa - ob;
+    });
+
+    const hasAiProposal = aiLogs.length > 0 || Boolean(approvals && approvals.some(a => a.proposed_action));
+    const hasGuardrail = guardrailLogs.length > 0;
+    const latestApproval = (approvals && approvals.length > 0) ? approvals[approvals.length - 1] : null;
+
+    return res.status(200).json({
+      mandateId: mandate.id,
+      arm: mandate.experiment_arm,
+      status: mandate.status,
+      attemptsUsed: mandate.attempts_used,
+      firstDueDay: mandate.first_due_day,
+      failureCategory: lastAttempt?.decline_category || null,
+      confidence: hasAiProposal ? '80%' : 'N/A',
+      confidenceValue: hasAiProposal ? (latestApproval?.proposed_action?.confidence ?? 0.8) : null,
+      aiProposal: hasAiProposal && aiLogs.length > 0 ? {
+        action: aiLogs[0].output?.action || null,
+        source: aiLogs[0].output?.source || null,
+        retryDelayDays: aiLogs[0].output?.retryDelayDays ?? null,
+        reasoning: aiLogs[0].reasoning || null,
+      } : null,
+      guardrailResult: hasGuardrail ? {
+        allowed: guardrailLogs[0].output?.allowed ?? true,
+        reasons: guardrailLogs[0].input?.reasons || (guardrailLogs[0].reasoning ? [guardrailLogs[0].reasoning] : []),
+        reasoning: guardrailLogs[0].reasoning || null,
+      } : null,
+      finalAction: mandate.next_action || null,
+      retryDay: (mandate.status === 'pending' && mandate.next_action === 'retry') ? mandate.next_action_day : null,
+      humanApproval: latestApproval ? {
+        id: latestApproval.id,
+        status: latestApproval.status,
+        expiresDay: latestApproval.expires_day ?? null,
+      } : null,
+      timeline,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: 'Failed to retrieve mandate replay' });
+  }
+});
+
 
 // ── GET /api/approvals ──────────────────────────────────────────────────────
 //

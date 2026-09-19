@@ -922,7 +922,7 @@
             </div>
             <p class="card-desc">
               Inspect the end-to-end recovery decision pipeline for any mandate: experiment arm, failure category, AI
-              proposal, confidence (deterministic 0.80 policy default), guardrail results, and scheduled actions.
+              proposal, decision confidence, guardrail results, and scheduled actions.
             </p>
 
             <div class="trace-select-box">
@@ -955,7 +955,7 @@
                 <span class="trace-lbl">Failure Category</span>
                 <span class="trace-data" id="tr-category">—</span>
               </div>
-              <div class="trace-item" title="Decision confidence: the current recovery policy assigns a deterministic 0.80 confidence value because Gemini currently returns action, retryDelayDays, and reasoning but no confidence field.">
+              <div class="trace-item" title="Decision confidence: displayed only when an actual AI/fallback proposal exists in authoritative audit records.">
                 <span class="trace-lbl">Decision Confidence</span>
                 <span class="trace-data" id="tr-confidence">—</span>
               </div>
@@ -979,6 +979,23 @@
                 <span class="trace-lbl">Human Approval State</span>
                 <span class="trace-data" id="tr-approval-state">—</span>
               </div>
+            </div>
+
+            <!-- Replay Decision button — only visible after trace is loaded -->
+            <div id="replay-launch-row" class="replay-launch-row hidden">
+              <button id="btn-replay-decision" class="btn btn-ghost btn-sm" type="button" aria-label="Replay decision lifecycle for this mandate">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M23 4v6h-6M1 20v-6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                Replay Decision
+              </button>
+            </div>
+
+            <!-- Decision Replay Timeline — only rendered after btn-replay-decision click -->
+            <div id="replay-container" class="replay-container hidden" aria-live="polite">
+              <div id="replay-alert" class="alert hidden" role="alert"></div>
+              <div id="replay-timeline" class="replay-timeline"></div>
             </div>
 
             <div id="trace-empty-state" class="oversight-empty">
