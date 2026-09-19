@@ -3867,6 +3867,285 @@ input {
 }
 
 /* ══════════════════════════════════════════════════════════
+   14b. OPERATOR OVERSIGHT & GOVERNANCE STYLES (PHASE 6)
+══════════════════════════════════════════════════════════ */
+.oversight-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 900px) {
+  .oversight-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.oversight-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.oversight-badge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.oversight-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.tag-purple {
+  background: var(--smart-bg);
+  color: var(--smart-text);
+  border: 1px solid var(--smart-border);
+}
+
+.tag-amber {
+  background: var(--amber-bg);
+  color: var(--amber-text);
+  border: 1px solid var(--amber-border);
+}
+
+.tag-blue {
+  background: var(--base-bg);
+  color: var(--base-text);
+  border: 1px solid var(--base-border);
+}
+
+.trace-select-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 16px 0;
+}
+
+.trace-manual-id-row {
+  margin-top: 4px;
+}
+
+.input-with-btn {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.input-with-btn .param-input {
+  flex: 1;
+}
+
+.trace-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+@media (max-width: 600px) {
+  .trace-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.trace-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trace-item-full {
+  grid-column: 1 / -1;
+}
+
+.trace-lbl {
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-3);
+  font-family: 'JetBrains Mono', monospace;
+  letter-spacing: 0.04em;
+}
+
+.trace-data {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  word-break: break-word;
+}
+
+.oversight-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-3);
+  font-size: 12.5px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  margin-top: 12px;
+}
+
+.oversight-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.approvals-feed-box {
+  max-height: 220px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.approval-card-item {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.approval-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.approval-item-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.approval-item-sub {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.approval-item-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.manual-approval-form {
+  background: var(--surface-2);
+  border: 1px solid var(--border-2);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  margin-top: auto;
+}
+
+.form-subheading {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-2);
+  margin: 0 0 8px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.approval-form-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1.5fr;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 600px) {
+  .approval-form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.approval-btn-row {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.btn-action-approve {
+  background: var(--green);
+  color: #ffffff;
+  font-weight: 600;
+  border: none;
+}
+
+.btn-action-approve:hover {
+  filter: brightness(1.1);
+}
+
+.btn-action-reject {
+  background: var(--red);
+  color: #ffffff;
+  font-weight: 600;
+  border: none;
+}
+
+.btn-action-reject:hover {
+  filter: brightness(1.1);
+}
+
+.webhook-card {
+  margin-top: 12px;
+}
+
+.badge-verified {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--green-bg);
+  color: var(--green-text);
+  border: 1px solid var(--green-border);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.badge-unverified {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--red-bg);
+  color: var(--red-text);
+  border: 1px solid var(--red-border);
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.oversight-footer-note {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
+/* ══════════════════════════════════════════════════════════
    15. REDUCED MOTION SUPPORT
 ══════════════════════════════════════════════════════════ */
 @media (prefers-reduced-motion: reduce) {

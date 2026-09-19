@@ -44,6 +44,7 @@
         <a href="#experiment" class="nav-link">Experiment</a>
         <a href="#strategies" class="nav-link">Strategies</a>
         <a href="#results" class="nav-link">Results</a>
+        <a href="#oversight" class="nav-link">Oversight</a>
         <a href="#architecture" class="nav-link">Architecture</a>
         <button id="theme-toggle" class="theme-btn" aria-label="Toggle light/dark mode" title="Toggle theme">
           <svg class="icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -489,7 +490,7 @@
                 <div class="manual-order-controls">
                   <label for="manual-order-mandate-select" class="manual-order-label">Select Smart Mandate</label>
                   <select id="manual-order-mandate-select" class="param-input manual-order-select">
-                    <option value="">— Select an eligible Smart mandate —</option>
+                    <option value="" disabled selected>No eligible Smart mandate available</option>
                   </select>
 
                   <div class="manual-order-custom">
@@ -875,6 +876,200 @@
           </div>
 
         </div>
+      </div>
+    </section>
+
+    <!-- ── 5. OPERATOR OVERSIGHT & GOVERNANCE ───────────────────────────────────── -->
+    <section id="oversight" class="section" aria-label="Operator oversight and governance">
+      <div class="container">
+        <div class="section-header">
+          <div class="section-badge">Human Oversight &amp; Audit</div>
+          <h2 class="section-title">Operator Intelligence &amp; Governance</h2>
+          <p class="section-sub">
+            Inspect AI decision traces, resolve pending human approvals, and monitor cryptographically verified Razorpay webhook deliveries.
+          </p>
+        </div>
+
+        <div class="oversight-grid">
+
+          <!-- 1. Decision Trace -->
+          <div class="card oversight-card" id="decision-trace-panel">
+            <div class="card-header">
+              <div class="oversight-badge-row">
+                <span class="oversight-tag tag-purple">Audit &amp; Trace</span>
+                <span class="card-badge">Single Mandate</span>
+              </div>
+              <h3 class="card-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Decision Trace
+              </h3>
+            </div>
+            <p class="card-desc">
+              Inspect the end-to-end recovery decision pipeline for any mandate: experiment arm, failure category, AI proposal, confidence, guardrail results, and scheduled actions.
+            </p>
+
+            <div class="trace-select-box">
+              <label for="trace-mandate-select" class="form-label">Select Mandate from Simulation:</label>
+              <select id="trace-mandate-select" class="param-input">
+                <option value="">— Select a mandate —</option>
+              </select>
+              <div class="trace-manual-id-row">
+                <label for="trace-mandate-input" class="form-label-sub">Or enter Mandate ID directly:</label>
+                <div class="input-with-btn">
+                  <input id="trace-mandate-input" class="param-input" type="text" placeholder="UUID (e.g. e00e3be1-...)" />
+                  <button id="btn-load-trace" class="btn btn-ghost btn-sm" type="button">Inspect Trace</button>
+                </div>
+              </div>
+            </div>
+
+            <div id="trace-alert" class="alert hidden" role="alert"></div>
+
+            <div id="trace-details" class="trace-grid hidden">
+              <div class="trace-item">
+                <span class="trace-lbl">Experiment Arm</span>
+                <span class="trace-data" id="tr-arm">—</span>
+              </div>
+              <div class="trace-item">
+                <span class="trace-lbl">Mandate Status</span>
+                <span class="trace-data" id="tr-status">—</span>
+              </div>
+              <div class="trace-item">
+                <span class="trace-lbl">Failure Category</span>
+                <span class="trace-data" id="tr-category">—</span>
+              </div>
+              <div class="trace-item">
+                <span class="trace-lbl">Decision Confidence</span>
+                <span class="trace-data" id="tr-confidence">—</span>
+              </div>
+              <div class="trace-item trace-item-full">
+                <span class="trace-lbl">AI Proposal / Action</span>
+                <span class="trace-data" id="tr-ai-proposal">—</span>
+              </div>
+              <div class="trace-item trace-item-full">
+                <span class="trace-lbl">Guardrail Result &amp; Reason</span>
+                <span class="trace-data" id="tr-guardrail">—</span>
+              </div>
+              <div class="trace-item">
+                <span class="trace-lbl">Final Action</span>
+                <span class="trace-data" id="tr-final-action">—</span>
+              </div>
+              <div class="trace-item">
+                <span class="trace-lbl">Retry Day</span>
+                <span class="trace-data" id="tr-retry-day">—</span>
+              </div>
+              <div class="trace-item trace-item-full">
+                <span class="trace-lbl">Human Approval State</span>
+                <span class="trace-data" id="tr-approval-state">—</span>
+              </div>
+            </div>
+
+            <div id="trace-empty-state" class="oversight-empty">
+              <span>Select or enter a Mandate ID above to load its authoritative decision trace.</span>
+            </div>
+          </div>
+
+          <!-- 2. Pending Approvals -->
+          <div class="card oversight-card" id="pending-approvals-panel">
+            <div class="card-header">
+              <div class="oversight-badge-row">
+                <span class="oversight-tag tag-amber">Human-in-the-Loop</span>
+                <span class="card-badge">Governance</span>
+              </div>
+              <h3 class="card-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                Pending Human Approvals
+              </h3>
+            </div>
+            <p class="card-desc">
+              Review and resolve Smart proposals held for operator review. Approving schedules the retry; rejecting stands the mandate down.
+            </p>
+
+            <div class="oversight-toolbar">
+              <button id="btn-refresh-approvals" class="btn btn-ghost btn-sm" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                Refresh
+              </button>
+            </div>
+
+            <div id="approvals-alert" class="alert hidden" role="alert"></div>
+
+            <div id="approvals-feed" class="approvals-feed-box">
+              <div class="oversight-empty" id="approvals-empty-box">
+                <span>No pending approvals found for this simulation.</span>
+              </div>
+            </div>
+
+            <!-- Manual Approval Resolution Form -->
+            <div class="manual-approval-form hidden" id="manual-approval-form">
+              <h4 class="form-subheading">Direct Approval Resolution (POST /api/approvals/:id/resolve)</h4>
+              <div class="approval-form-row">
+                <input id="input-approval-id" class="param-input" type="text" placeholder="Approval Request ID (UUID)" />
+                <input id="input-decided-by" class="param-input" type="text" placeholder="Decided By" value="operator" />
+                <input id="input-approval-reason" class="param-input" type="text" placeholder="Reason (optional)" />
+              </div>
+              <div class="approval-btn-row">
+                <button id="btn-action-approve" class="btn btn-sm btn-action-approve" type="button">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+                  Approve (Retry)
+                </button>
+                <button id="btn-action-reject" class="btn btn-sm btn-action-reject" type="button">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  Reject (Stand Down)
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- 3. Webhook Verification Tester -->
+        <div class="card oversight-card webhook-card" id="webhook-tester-panel">
+          <div class="card-header">
+            <div class="oversight-badge-row">
+              <span class="oversight-tag tag-blue">HMAC-SHA256 Ingestion</span>
+              <span class="card-badge">PostgreSQL webhook_events</span>
+            </div>
+            <h3 class="card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              Webhook Verification Status
+            </h3>
+          </div>
+          <p class="card-desc">
+            Recent verified webhook deliveries processed at <code class="code-inline">/api/v1/webhooks/razorpay</code>. Signature verification is cryptographically verified timing-safely before row persistence.
+          </p>
+
+          <div class="oversight-toolbar">
+            <button id="btn-refresh-webhooks" class="btn btn-ghost btn-sm" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+              Refresh Events
+            </button>
+          </div>
+
+          <div id="webhook-status-alert" class="alert hidden" role="alert"></div>
+
+          <div class="table-scroll">
+            <table class="metrics-table">
+              <thead>
+                <tr>
+                  <th scope="col">Event Type</th>
+                  <th scope="col">Event ID</th>
+                  <th scope="col">Signature Verified</th>
+                  <th scope="col">Received Time (UTC)</th>
+                </tr>
+              </thead>
+              <tbody id="webhook-events-body">
+                <tr>
+                  <td colspan="4" class="td-empty">Loading verified webhook events...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="oversight-footer-note">
+            Authoritative records from PostgreSQL <code class="code-inline">webhook_events</code>. Unverified or tampered payloads return 400/401 and are never saved.
+          </div>
+        </div>
+
       </div>
     </section>
 
