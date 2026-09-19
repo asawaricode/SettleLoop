@@ -7,6 +7,7 @@ import path from 'node:path';
 import apiRouter from './src/api/routes.js';
 import webhookRouter from './src/api/razorpayWebhook.js';
 import { handleCreateOrder } from './src/api/razorpayOrder.js';
+import { apiLimiter, webhookLimiter, manualOrderLimiter } from './src/middleware/rateLimiter.js';
 
 // ── 1. Validate required environment variables ─────────────────────────────
 const { SUPABASE_URL, SUPABASE_SECRET_KEY } = process.env;
@@ -41,7 +42,7 @@ app.use((_req, res, next) => {
 // express.raw() is applied inside webhookRouter as its first route-level
 // middleware, so the raw body Buffer is preserved for HMAC-SHA256 verification.
 // If express.json() ran first, req.body would already be parsed and rawBody lost.
-app.use('/api/v1/webhooks/razorpay', webhookRouter);
+app.use('/api/v1/webhooks/razorpay', webhookLimiter, webhookRouter);
 
 app.use(express.json());
 
@@ -55,11 +56,11 @@ app.get('/', (_req, res) => {
   });
 });
 
-app.use('/api', apiRouter);
+app.use('/api', apiLimiter, apiRouter);
 
 // ── Manual Razorpay order endpoint (v1, JSON body, post-express.json) ──────────
 // MANUAL-ONLY. Not reachable from simulation runner or any recovery policy.
-app.post('/api/v1/razorpay/orders', handleCreateOrder);
+app.post('/api/v1/razorpay/orders', manualOrderLimiter, handleCreateOrder);
 
 // ── 5. Dashboard static files ──────────────────────────────────────────────
 // Serves the judge-facing dashboard at GET /dashboard/

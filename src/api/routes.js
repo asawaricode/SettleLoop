@@ -4,6 +4,7 @@ import { generateSyntheticData } from '../generators/syntheticDataGenerator.js';
 import { runAllRecovery } from '../recovery/recoveryRunner.js';
 import { getSimulationMetrics } from '../evaluation/metrics.js';
 import { approveHumanApproval, rejectHumanApproval } from '../recovery/humanApproval.js';
+import { validateBody, simulationCreateSchema, approvalResolveSchema } from './validation.js';
 
 const router = Router();
 
@@ -13,44 +14,14 @@ router.get('/health', (_req, res) => {
 });
 
 // ── POST /api/simulations ───────────────────────────────────────────────────
-router.post('/simulations', async (req, res) => {
+router.post('/simulations', validateBody(simulationCreateSchema), async (req, res) => {
   try {
-    if (!req.body || typeof req.body !== 'object') {
-      return res.status(400).json({ error: 'Request body must be a JSON object' });
-    }
-
     const { seed, mandateCount, maxDays } = req.body;
-
-    if (seed === undefined || typeof seed !== 'number' || !Number.isFinite(seed)) {
-      return res.status(400).json({ error: 'seed must be a finite number' });
-    }
-
-    if (
-      mandateCount === undefined ||
-      typeof mandateCount !== 'number' ||
-      !Number.isInteger(mandateCount) ||
-      mandateCount < 1 ||
-      mandateCount > 10000
-    ) {
-      return res.status(400).json({ error: 'mandateCount must be a positive integer between 1 and 10000' });
-    }
-
-    if (
-      maxDays === undefined ||
-      typeof maxDays !== 'number' ||
-      !Number.isInteger(maxDays) ||
-      maxDays < 1 ||
-      maxDays > 365
-    ) {
-      return res.status(400).json({ error: 'maxDays must be a positive integer between 1 and 365' });
-    }
-
     const { simulationRunId, mandateIds } = await generateSyntheticData({
       seed,
       mandateCount,
       maxDays,
     });
-
     return res.status(201).json({
       runId: simulationRunId,
       mandateIds,
@@ -154,7 +125,7 @@ router.get('/simulations/:runId/metrics', async (req, res) => {
 //   - Max 4 total attempts enforced by the existing resolve_approval RPC.
 //   - UPI AutoPay retry guardrail is preserved (execute_attempt is NOT called here).
 // ---------------------------------------------------------------------------
-router.post('/approvals/:id/resolve', async (req, res) => {
+router.post('/approvals/:id/resolve', validateBody(approvalResolveSchema), async (req, res) => {
   try {
     const { id: approvalId } = req.params;
 
@@ -162,34 +133,13 @@ router.post('/approvals/:id/resolve', async (req, res) => {
       return res.status(400).json({ error: 'approvalId path parameter is required' });
     }
 
-    if (!req.body || typeof req.body !== 'object') {
-      return res.status(400).json({ error: 'Request body must be a JSON object' });
-    }
-
-    const { decision, decidedBy, decidedDay, decisionReason = null } = req.body;
-
-    if (decision !== 'approved' && decision !== 'rejected') {
-      return res.status(400).json({ error: 'decision must be "approved" or "rejected"' });
-    }
-
-    if (!decidedBy || typeof decidedBy !== 'string' || decidedBy.trim() === '') {
-      return res.status(400).json({ error: 'decidedBy must be a non-empty string' });
-    }
-
-    if (
-      decidedDay === undefined ||
-      typeof decidedDay !== 'number' ||
-      !Number.isInteger(decidedDay) ||
-      decidedDay < 0
-    ) {
-      return res.status(400).json({ error: 'decidedDay must be a non-negative integer' });
-    }
+    const { decision, decidedBy, decidedDay, decisionReason } = req.body;
 
     let result;
     if (decision === 'approved') {
-      result = await approveHumanApproval({ approvalId, decidedBy, decidedDay, decisionReason });
+      result = await approveHumanApproval({ approvalId, decidedBy, decidedDay, decisionReason: decisionReason ?? null });
     } else {
-      result = await rejectHumanApproval({ approvalId, decidedBy, decidedDay, decisionReason });
+      result = await rejectHumanApproval({ approvalId, decidedBy, decidedDay, decisionReason: decisionReason ?? null });
     }
 
     return res.status(200).json({

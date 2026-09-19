@@ -36,6 +36,7 @@
 //   - Modify mandate state.
 
 import { supabase } from '../config/supabase.js';
+import { manualOrderSchema } from './validation.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -105,20 +106,31 @@ export async function createRazorpayOrder({ amountPaise, currency, keyId, keySec
  * MANUAL-ONLY. Not reachable from simulation runner or any recovery policy.
  */
 export async function handleCreateOrder(req, res) {
-  // ── 1. Validate request body ─────────────────────────────────────────────
-  if (!req.body || typeof req.body !== 'object') {
+  // ── 0. Isolation guard ─────────────────────────────────────────────────────
+  // Explicitly prevents this endpoint from being called during automated
+  // simulation batch execution. The simulation runner uses direct function
+  // imports (not HTTP), so this header is never set in normal operator use.
+  // Any future automated caller that sets x-automated-batch: 1 is rejected here.
+  if (req.headers['x-automated-batch'] === '1') {
+    return res.status(403).json({
+      error: 'This endpoint is operator-only and cannot be invoked during automated simulation execution.',
+      disclosure: ORDER_DISCLOSURE,
+    });
+  }
+
+  // ── 1. Validate request body (Zod) ─────────────────────────────────────────
+  if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
     return res.status(400).json({ error: 'Request body must be a JSON object', disclosure: ORDER_DISCLOSURE });
   }
-
-  const { mandateId, currency = 'INR' } = req.body;
-
-  if (!mandateId || typeof mandateId !== 'string' || mandateId.trim() === '') {
-    return res.status(400).json({ error: 'mandateId must be a non-empty string', disclosure: ORDER_DISCLOSURE });
+  const bodyResult = manualOrderSchema.safeParse(req.body);
+  if (!bodyResult.success) {
+    const msg = bodyResult.error.issues?.[0]?.message ?? bodyResult.error.errors?.[0]?.message ?? bodyResult.error.message;
+    return res.status(400).json({
+      error: msg,
+      disclosure: ORDER_DISCLOSURE,
+    });
   }
-
-  if (!currency || typeof currency !== 'string' || currency.trim() === '') {
-    return res.status(400).json({ error: 'currency must be a non-empty string', disclosure: ORDER_DISCLOSURE });
-  }
+  const { mandateId, currency } = bodyResult.data;
 
   // ── 2. Fetch mandate from database ───────────────────────────────────────
   const { data: mandate, error: mandateErr } = await supabase
