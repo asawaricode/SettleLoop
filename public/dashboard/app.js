@@ -16,6 +16,7 @@ const S = {
   lastSeed: null,
   lastMandates: null,
   lastMaxDays: null,
+  mandateIds: [],
 };
 
 // ══════════════════════════════════════════════════════════
@@ -250,13 +251,16 @@ async function createSimulation() {
 
     // Save state
     S.runId = result.runId;
+    S.mandateIds = Array.isArray(result.mandateIds) ? result.mandateIds : [];
     S.hasRun = false;
     S.lastSeed = seed;
     S.lastMandates = mandateCount;
     S.lastMaxDays = maxDays;
 
-    // Display actual returned Run ID
+    // Display actual returned Run ID and populate mandate options
     $('run-id-display').textContent = result.runId;
+    populateMandateSelect(S.mandateIds);
+    hideAlert('manual-order-alert');
     updateRunStatusUI({ currentDay: 0, maxDays, status: 'created' }, null);
     hide('run-empty');
     show('run-info');
@@ -900,6 +904,101 @@ function initHeroScenarioAnimation() {
 }
 
 // ══════════════════════════════════════════════════════════
+// MANUAL RAZORPAY TEST MODE ORDER (Operator Action)
+// ══════════════════════════════════════════════════════════
+
+/** Populate mandate dropdown from simulation mandate IDs. */
+function populateMandateSelect(mandateIds) {
+  const sel = $('manual-order-mandate-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Select an eligible Smart mandate —</option>';
+  if (!Array.isArray(mandateIds) || mandateIds.length === 0) return;
+
+  mandateIds.forEach((id, idx) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = 'Mandate #' + (idx + 1) + ' (' + id.slice(0, 8) + '…)';
+    sel.appendChild(opt);
+  });
+}
+
+/**
+ * Executes a manual Razorpay Test Mode order creation request.
+ *
+ * Rules:
+ * - Requires explicit manual operator click.
+ * - Discloses that this creates a real Test Mode order artifact and is NOT a payment retry.
+ * - Never called automatically by simulation runner.
+ * - Calls existing POST /api/v1/razorpay/orders (no second backend route).
+ */
+async function createManualRazorpayOrder() {
+  const selectVal = $('manual-order-mandate-select')?.value?.trim();
+  const inputVal = $('manual-order-mandate-id')?.value?.trim();
+  const mandateId = inputVal || selectVal;
+
+  if (!mandateId) {
+    return showAlert('manual-order-alert', 'error', 'Please select or enter a valid Mandate ID.');
+  }
+
+  const btn = $('btn-manual-order');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Creating Test Mode Order&hellip;';
+  }
+
+  showAlert('manual-order-alert', 'loading',
+    '<div class="spinner"></div>&nbsp; Calling Razorpay Test Mode Orders API directly&hellip;');
+
+  try {
+    const res = await fetch('/api/v1/razorpay/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mandateId, currency: 'INR' }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const errMsg = data.error || ('HTTP ' + res.status);
+      const disc = data.disclosure ? '<div class="alert-disclosure">' + esc(data.disclosure) + '</div>' : '';
+      showAlert('manual-order-alert', 'error',
+        '<strong>Backend Validation Error:</strong> ' + esc(errMsg) + disc);
+      return;
+    }
+
+    const order = data.razorpay_order || {};
+    const disc = data.disclosure ? '<div class="alert-disclosure">' + esc(data.disclosure) + '</div>' : '';
+    const amtRupees = order.amount ? (order.amount / 100).toFixed(2) : '—';
+
+    showAlert('manual-order-alert', 'success',
+      '<div class="order-success-title">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>' +
+        '<span>Real Razorpay Test Mode Order Created</span>' +
+      '</div>' +
+      '<div class="order-success-meta">' +
+        '<div><strong>Order ID:</strong> <code class="order-id-code">' + esc(order.id || '—') + '</code></div>' +
+        '<div><strong>Amount:</strong> ₹' + esc(amtRupees) + ' (' + esc(order.currency || 'INR') + ')</div>' +
+        '<div><strong>Status:</strong> <span class="order-status-pill">' + esc(order.status || 'created') + '</span></div>' +
+        '<div><strong>Mandate Arm:</strong> ' + esc(data.mandate?.experiment_arm || 'smart') + '</div>' +
+      '</div>' +
+      disc);
+  } catch (err) {
+    showAlert('manual-order-alert', 'error',
+      '<strong>Request Failed:</strong> ' + esc(err.message));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML =
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
+          '<rect x="2" y="5" width="20" height="14" rx="2" />' +
+          '<line x1="2" y1="10" x2="22" y2="10" />' +
+        '</svg>' +
+        ' Create Real Razorpay Test Mode Order';
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════
 // INITIALIZATION
 // ══════════════════════════════════════════════════════════
 function init() {
@@ -922,6 +1021,7 @@ function init() {
   show('results-empty');
   hideAlert('setup-alert');
   hideAlert('run-alert');
+  hideAlert('manual-order-alert');
   resetStrategyMetricsToAwaiting();
   updateExperimentPreview();
 
@@ -929,6 +1029,15 @@ function init() {
   $('theme-toggle').addEventListener('click', toggleTheme);
   $('btn-create').addEventListener('click', createSimulation);
   $('btn-run').addEventListener('click', runSimulation);
+
+  // Manual Razorpay order handlers
+  $('manual-order-mandate-select')?.addEventListener('change', e => {
+    if (e.target.value) {
+      const input = $('manual-order-mandate-id');
+      if (input) input.value = e.target.value;
+    }
+  });
+  $('btn-manual-order')?.addEventListener('click', createManualRazorpayOrder);
 
   // Input changes for live preview
   $('input-mandates')?.addEventListener('input', updateExperimentPreview);
@@ -945,4 +1054,5 @@ function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
 

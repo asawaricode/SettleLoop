@@ -1705,6 +1705,182 @@ input {
   color: var(--accent-2);
 }
 
+/* ── Manual Operator Action (Razorpay Real Test Mode Order) ── */
+.manual-order-section {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.manual-order-header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.manual-order-badge {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #b45309;
+}
+
+[data-theme="dark"] .manual-order-badge {
+  color: #fbbf24;
+}
+
+.manual-order-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin: 0;
+}
+
+.manual-order-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  background: rgba(245, 158, 11, 0.09);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  color: #92400e;
+  font-size: 11.5px;
+  line-height: 1.45;
+  font-weight: 500;
+}
+
+[data-theme="dark"] .manual-order-warning {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fde68a;
+}
+
+.manual-order-warning svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: #f59e0b;
+}
+
+.manual-order-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.manual-order-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.manual-order-select {
+  cursor: pointer;
+}
+
+.manual-order-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.manual-order-sublabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.btn-warning {
+  background: #f59e0b;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 11px 16px;
+  box-shadow: 0 4px 14px rgba(245, 158, 11, 0.25);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: #d97706;
+  box-shadow: 0 6px 18px rgba(245, 158, 11, 0.35);
+}
+
+.btn-warning:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn-warning:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.order-success-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.order-success-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.order-id-code {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+[data-theme="dark"] .order-id-code {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.order-status-pill {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--green-bg);
+  color: var(--green-text);
+  border: 1px solid var(--green-border);
+}
+
+.alert-disclosure {
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  font-size: 11px;
+  font-weight: 500;
+  opacity: 0.9;
+  font-style: italic;
+}
+
+[data-theme="dark"] .alert-disclosure {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
 /* ══════════════════════════════════════════════════════════
    8. STRATEGIES SECTION
 ══════════════════════════════════════════════════════════ */

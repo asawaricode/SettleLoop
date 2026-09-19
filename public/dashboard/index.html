@@ -469,6 +469,45 @@
               </button>
 
               <div id="run-alert" class="alert hidden" role="alert"></div>
+
+              <!-- ── Manual Operator Action: Real Razorpay Test Mode Order ── -->
+              <div class="manual-order-section" id="manual-order-section">
+                <div class="manual-order-header">
+                  <span class="manual-order-badge">Operator Action &bull; Real Integration</span>
+                  <h4 class="manual-order-title">Manual Razorpay Test Mode Order</h4>
+                </div>
+
+                <div class="manual-order-warning" role="alert">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                    <line x1="12" y1="9" x2="12" y2="13" />
+                    <line x1="12" y1="17" x2="12.01" y2="17" />
+                  </svg>
+                  <span>This creates a real Razorpay Test Mode order artifact. It is not a payment retry and does not execute a payment.</span>
+                </div>
+
+                <div class="manual-order-controls">
+                  <label for="manual-order-mandate-select" class="manual-order-label">Select Smart Mandate</label>
+                  <select id="manual-order-mandate-select" class="param-input manual-order-select">
+                    <option value="">— Select an eligible Smart mandate —</option>
+                  </select>
+
+                  <div class="manual-order-custom">
+                    <label for="manual-order-mandate-id" class="manual-order-sublabel">Or enter Mandate ID directly:</label>
+                    <input id="manual-order-mandate-id" class="param-input" type="text" placeholder="UUID (e.g. 550e8400-e29b-41d4-a716-446655440000)" />
+                  </div>
+                </div>
+
+                <button id="btn-manual-order" class="btn btn-warning w-full" type="button">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <rect x="2" y="5" width="20" height="14" rx="2" />
+                    <line x1="2" y1="10" x2="22" y2="10" />
+                  </svg>
+                  Create Real Razorpay Test Mode Order
+                </button>
+
+                <div id="manual-order-alert" class="alert hidden" role="alert"></div>
+              </div>
             </div>
           </div>
         </div>
