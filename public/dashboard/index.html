@@ -308,7 +308,7 @@
               <span class="arm-flow-arrow">&rarr;</span>
               <span class="arm-flow-step step-fixed">D+1 &rarr; D+3 &rarr; D+6</span>
             </div>
-            <p class="arm-desc">Rigid calendar retries without failure-reason awareness or smart timing.</p>
+            <p class="arm-desc">Rigid calendar retries without failure-reason awareness. UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries).</p>
           </div>
 
           <!-- Arm 3: Smart -->
@@ -327,8 +327,7 @@
               <span class="arm-flow-arrow">&rarr;</span>
               <span class="arm-flow-step step-safe">Safe Action</span>
             </div>
-            <p class="arm-desc">Intelligent window selection bounded by hard safety limits. AI never directly executes
-              payments.</p>
+            <p class="arm-desc">Intelligent window selection bounded by deterministic safety limits (UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries)). AI never directly executes payments.</p>
           </div>
         </div>
 
@@ -923,7 +922,7 @@
             </div>
             <p class="card-desc">
               Inspect the end-to-end recovery decision pipeline for any mandate: experiment arm, failure category, AI
-              proposal, confidence, guardrail results, and scheduled actions.
+              proposal, confidence (deterministic 0.80 policy default), guardrail results, and scheduled actions.
             </p>
 
             <div class="trace-select-box">
@@ -956,7 +955,7 @@
                 <span class="trace-lbl">Failure Category</span>
                 <span class="trace-data" id="tr-category">—</span>
               </div>
-              <div class="trace-item">
+              <div class="trace-item" title="Decision confidence: the current recovery policy assigns a deterministic 0.80 confidence value because Gemini currently returns action, retryDelayDays, and reasoning but no confidence field.">
                 <span class="trace-lbl">Decision Confidence</span>
                 <span class="trace-data" id="tr-confidence">—</span>
               </div>

@@ -27,7 +27,9 @@ curl http://localhost:3000/
 
 ---
 
-## MAIN DEMO
+## Interactive Quick Walkthrough (Seed 20001 Cohort)
+
+*Note: This 9-mandate walkthrough is designed for fast interactive demonstration (<30 seconds). For the definitive large-scale multi-arm benchmark results, see the [Final n=300 Synthetic Experiment Results](#final-n300-synthetic-experiment-results) section below.*
 
 ### Verified Configuration
 
@@ -297,25 +299,25 @@ Guardrails operate as a pure function with no database or API access.
 |----------|------|---------|
 | 1 | Invalid action | `stand_down` |
 | 2 | Hard/unknown failure + retry proposed | `stand_down` |
-| 3 | Attempts exhausted (≥ 4) | `stand_down` |
-| 4 | Confidence < 0.70 | `human_review` |
+| 3 | UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries) | `stand_down` |
+| 4 | Confidence < 0.70 (defensive policy threshold) | `human_review` |
 | 5 | Payment link + no contact consent | `human_review` |
 | 6 | All checks pass | proposal allowed |
 
-**In the seed 20001 run:** Guardrails enforced Rule 2 for all 3 Smart mandates, preventing any retries of hard/unknown failures.
+**In the seed 20001 quick walkthrough:** Guardrails enforced Rule 2 for all 3 Smart mandates, preventing any retries of hard/unknown failures.
 
 ---
 
 ## Human Approval: Targeted Verification
 
-Human Approval did **not** naturally trigger in the seed 20001 run (all Smart mandates had hard failures → stand_down, not human_review).
+Human Approval did **not** naturally trigger in the seed 20001 quick walkthrough run (all Smart mandates had hard failures → stand_down, not human_review).
 
 The Human Approval system is **fully implemented** and was verified in Step 19 tests. The path works as follows:
 
 ```
 Smart mandate fails with soft decline
-  → Gemini proposes retry with confidence 0.55 (below 0.70 threshold)
-  → Guardrails: confidence < 0.70 → human_review
+  → Advisory proposal evaluated (Decision confidence: the current recovery policy assigns a deterministic 0.80 confidence value because Gemini currently returns action, retryDelayDays, and reasoning but no confidence field; low-confidence escalation is verified via targeted unit tests)
+  → Guardrails: confidence < 0.70 or explicit human_review → human_review
   → requestHumanApproval():
       - Creates approval_requests row in Supabase
       - mandate.status → "pending_human_approval"
@@ -338,21 +340,34 @@ Smart mandate fails with soft decline
 
 This behavior is tested and passing in `tests/step15.test.js` and `tests/step18.test.js`.
 
-**Honest statement:** Human Approval triggered naturally in Step 19 test runs. In the live seed 20001 demo run, all Smart mandates had hard failures which Guardrails sent to `stand_down` before Human Approval was needed.
+**Honest statement:** Human Approval triggered naturally in Step 19 test runs. In the live seed 20001 quick walkthrough run, all Smart mandates had hard failures which Guardrails sent to `stand_down` before Human Approval was needed.
 
 ---
 
-## Final Metrics Summary (Seed 20001)
+## Final n=300 Synthetic Experiment Results
+
+The definitive multi-arm experiment was executed on the full $n=300$ cohort (100 Control, 100 Baseline, 100 Smart) outside serverless HTTP constraints:
+
+- **Run ID:** `02e1ecea-1a09-4813-a994-f007ba5fc497`
+- **Seed:** `42000`
+- **Virtual Schedule Window:** Max 14 virtual days (Evaluated days: `0–9`)
+- **Termination Reason:** `no_future_actions_within_window`
+- **Total Executed Attempts (All Arms):** `347`
+- **Elapsed Time:** `979.13s`
 
 | Metric | Control | Baseline | Smart |
-|--------|---------|----------|-------|
-| Mandates | 3 | 3 | 3 |
-| Recovered | 2 | 3 | 0 |
-| Recovery Rate | 66.7% | 100% | 0% |
-| Attempts Total | 3 | 3 | 0 |
-| Attempts / Mandate | 1.0 | 1.0 | 0 |
-| Total Amount | ₹91,724 | ₹93,476 | ₹66,789 |
-| Recovered Amount | ₹70,884 | ₹93,476 | ₹0 |
+|---|:---:|:---:|:---:|
+| Mandates | 100 | 100 | 100 |
+| Recovered | 65 | 80 | 73 |
+| Recovery Rate | 65.00% | 80.00% | 73.00% |
+| Executed Attempts | 100 | 122 | 125 |
+| Attempts / Mandate | 1.00 | 1.22 | 1.25 |
+| Attempts / Recovery | 1.5385 | 1.5250 | 1.7123 |
+| Total Amount | ₹2,422,396.12 | ₹2,343,614.12 | ₹2,653,372.67 |
+| Recovered Amount | ₹1,468,108.78 | ₹1,895,988.24 | ₹1,874,473.42 |
+| Average Days to Recovery | 0.0 days | 0.3375 days | 0.6849 days |
+| Smart Lift vs Control | — | — | **+8.00 pp** (+12.31% rel) |
+| Smart Lift vs Baseline | — | — | **-7.00 pp** (-8.75% rel) |
 
 ---
 
@@ -367,7 +382,7 @@ totalViolations:             0
 safe:                        true
 ```
 
-**All safety invariants held.** No hard failures were retried. No duplicate attempts were created. No consent violations occurred. This was verified in both the live demo run and the Step 19 60-mandate stress test.
+**All safety invariants held across all 347 executed attempts.** No hard failures were retried, no duplicate attempts were created, and zero consent violations occurred.
 
 ---
 
@@ -375,7 +390,8 @@ safe:                        true
 
 | Run | Gemini | Source |
 |-----|--------|--------|
-| seed 20001 (main demo) | ✅ Live Gemini API called | `source: "ai"` in audit logs |
+| Final n=300 experiment (seed 42000) | ✅ Live Gemini API called | `source: "ai"` in audit logs |
+| Seed 20001 (quick 9-mandate walk-through) | ✅ Live Gemini API called | `source: "ai"` in audit logs |
 | Step 18 tests | 🔵 Mocked (test intercept) | Clearly labeled in test code |
 | Step 19 tests | 🔵 Mocked (test intercept) | Clearly labeled in test code |
 | Server fallback (Gemini unavailable) | 🟡 Deterministic heuristic | `source: "fallback"` in audit logs |
@@ -400,13 +416,16 @@ The Smart agent uses Gemini to read failure context — decline category, balanc
 - **The AI never directly executes anything.** Proposals pass through deterministic Guardrails.
 - **Guardrails are purely deterministic** — hard failures always stand down, regardless of AI confidence.
 - **Execution is atomic** — PostgreSQL RPCs enforce idempotency. A mandate cannot be retried twice by accident.
-- **Uncertain cases escalate** — low-confidence proposals go to Human Approval rather than proceeding blindly.
-
-### Why Safety Matters
-In the seed 20001 live run, all 3 Smart mandates had hard failures. The system correctly refused to retry any of them. `totalViolations: 0`. This is the correct behavior — it saves processing fees and avoids bothering customers whose cards are genuinely blocked.
+- **Uncertain cases escalate** — proposals flagged for human review or with confidence below the 0.70 defensive threshold escalate to Human Approval. *(Decision confidence: the current recovery policy assigns a deterministic 0.80 confidence value because Gemini currently returns action, retryDelayDays, and reasoning but no confidence field).*
 
 ### What the Metrics Show
-The seed 20001 run demonstrates the safety system more than the recovery lift. For recovery lift scenarios, seeds with predominantly soft failures in the Smart arm would show Smart outperforming Baseline. The evaluation framework computes lift correctly and safely handles the zero-rate case.
+In the final n=300 synthetic experiment (seed 42000):
+- **Control** achieved a 65.00% natural recovery rate (65/100) with 100 attempts (1.00 per mandate).
+- **Baseline** achieved an 80.00% recovery rate (80/100) with 122 attempts (1.22 per mandate).
+- **Smart** achieved a 73.00% recovery rate (73/100) with 125 attempts (1.25 per mandate).
+- Smart outperformed Control by **+8.00 percentage points** (+12.31% relative lift).
+- Smart was **-7.00 percentage points** (-8.75% relative) compared to Baseline on this cohort.
+- Safety invariants were 100% maintained with **0 violations** across all arms.
 
 ---
 

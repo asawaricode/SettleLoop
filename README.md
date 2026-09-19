@@ -55,7 +55,7 @@ All three strategies operate against the identical synthetic simulation workload
 | **Failure Classification** | Maps raw payment failure error codes to semantic decline categories (`soft_decline`, `hard_decline`, `unknown`). |
 | **Gemini Decision Engine** | Google Gemini 2.0 Flash (`temperature: 0`) proposes context-aware retry delays and recovery actions with automated deterministic fallback. |
 | **Deterministic Guardrails** | Pure safety rules validate every AI proposal; hard declines are permanently stood down and attempt limits are strictly enforced. |
-| **Human Approval Workflow** | Low-confidence proposals or missing consent trigger a formal `pending_human_approval` state with bounded virtual-day expiration. |
+| **Human Approval Workflow** | Flagged proposals (low confidence or missing consent) trigger a formal `pending_human_approval` state with bounded virtual-day expiration. |
 | **Atomic PostgreSQL RPCs** | Sensitive state transitions, attempt caps (max 4), and idempotency keys are enforced via database stored procedures. |
 | **Payment Simulator** | Cryptographic hash-based payment simulation guarantees reproducible success/failure outcomes for given mandate seeds. |
 | **Audit Logging** | Append-only audit table captures every decision, actor, reasoning, inputs, and outputs with zero secret exposure. |
@@ -127,7 +127,7 @@ flowchart TD
         GUARD --> DECISION{"Guardrail Outcome"}
         DECISION -->|"Safe Action"| ACT_RETRY["Schedule Safe Retry"]
         DECISION -->|"Terminal / Hard Decline"| ACT_SD["Stand Down"]
-        DECISION -->|"Low Confidence / No Consent"| ACT_HUMAN["Escalate to Human Approval"]
+        DECISION -->|"Review Escalation / No Consent"| ACT_HUMAN["Escalate to Human Approval"]
     end
 
     subgraph ExecutionLayer ["PostgreSQL RPC Boundary & State Enforcement"]
@@ -162,8 +162,8 @@ flowchart TD
 | Strategy | Decision Policy | Purpose | Retries Allowed |
 |:---|:---|:---|:---:|
 | **Control** | No retry after first failure | Establishes natural unassisted recovery baseline | 0 |
-| **Baseline** | Fixed calendar schedule ($D \rightarrow D+1 \rightarrow D+3 \rightarrow D+6$) | Represents current standard industry retry benchmark | Up to 4 attempts |
-| **Smart** | Classify $\rightarrow$ AI proposal $\rightarrow$ Guardrails $\rightarrow$ Safe action / Human review | Adapts timing and actions to failure category and customer context | Up to 4 attempts |
+| **Baseline** | Fixed calendar schedule ($D \rightarrow D+1 \rightarrow D+3 \rightarrow D+6$) | Represents current standard industry retry benchmark | UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries) |
+| **Smart** | Classify $\rightarrow$ AI proposal $\rightarrow$ Guardrails $\rightarrow$ Safe action / Human review | Adapts timing and actions to failure category and customer context | UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries) |
 
 ### Why Comparison Arms Matter
 
@@ -180,8 +180,8 @@ Payment Failure ──► Failure Classifier ──► AI Proposal ──► Det
 - **AI is Decision Support, Not Execution:** The AI model produces advisory proposals. It cannot call banking APIs or directly mutate database records.
 - **Guardrails Enforce Hard Boundaries:** Guardrails validate every proposal against deterministic safety rules:
   - Any hard decline or unknown failure reason is forced to `stand_down` (zero automated retries).
-  - Attempt counts $\ge 4$ trigger mandatory stand-down.
-  - Proposals with confidence $< 0.70$ or payment links without contact consent escalate to `human_review`.
+  - UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries) — attempt counts $\ge 4$ trigger mandatory stand-down.
+  - Proposals with confidence $< 0.70$ (or payment links without contact consent) escalate to `human_review`. *(Decision confidence: the current recovery policy assigns a deterministic 0.80 confidence value because Gemini currently returns action, retryDelayDays, and reasoning but no confidence field; the 0.70 guardrail serves as a defensive boundary rather than an active model signal).*
 - **Human Approval is an Escalation State:** When escalated, the mandate transitions to `pending_human_approval` with an expiration window. It never directly executes a payment attempt.
 - **Tamper-Evident Audit Logging:** Every decision, including actor, rule triggers, inputs, outputs, and reasoning, is written to the append-only `audit_logs` table.
 
@@ -262,23 +262,30 @@ SettleLoop calculates recovery and safety metrics from persisted database record
 
 ---
 
-### Example Run — Illustrative Result
+### Final n=300 Synthetic Experiment Results
 
-*The following results reflect a real simulation run executed against live Supabase and Gemini.*  
-*Not a general performance guarantee.*
+*The following authoritative results reflect the completed final synthetic experiment executed against live Supabase and live Gemini.*
 
-**Run Parameters:** Seed `20001` · Mandate Count `9` (3 Control, 3 Baseline, 3 Smart) · Max Virtual Days `7`
+**Run Parameters:**  
+- **Run ID:** `02e1ecea-1a09-4813-a994-f007ba5fc497`  
+- **Seed:** `42000`  
+- **Cohort Size:** `300` mandates total (100 Control, 100 Baseline, 100 Smart)  
+- **Virtual Schedule Window:** Max `14` virtual days (Evaluated days: `0–9`)  
+- **Termination Reason:** `no_future_actions_within_window`  
+- **Total Executed Attempts (All Arms):** `347`  
+- **Execution Elapsed Time:** `979.13s`  
 
 | Metric | Control (Stand Down) | Baseline (Fixed Schedule) | Smart (AI + Guardrails) |
 |:---|:---:|:---:|:---:|
-| **Recovery Rate** | **0.0%** (0 / 3) | **33.3%** (1 / 3) | **100.0%** (3 / 3) |
-| **Total Amount** | ₹91,724.29 | ₹93,475.63 | ₹66,788.56 |
-| **Recovered Amount** | ₹0.00 | ₹40,208.93 | ₹66,788.56 |
-| **Executed Attempts** | 3 | 3 | 3 |
-| **Attempts / Mandate** | 1.00 | 1.00 | 1.00 |
-| **Attempts / Recovery** | 0.00 | 3.00 | 1.00 |
-| **Avg Time to Recovery** | 0.0 days | 0.0 days | 0.0 days |
-| **Observed Lift** | — | — | **+66.7 pp** vs Baseline (+200.0% rel) |
+| **Recovery Rate** | **65.00%** (65 / 100) | **80.00%** (80 / 100) | **73.00%** (73 / 100) |
+| **Total Amount** | ₹2,422,396.12 | ₹2,343,614.12 | ₹2,653,372.67 |
+| **Recovered Amount** | ₹1,468,108.78 | ₹1,895,988.24 | ₹1,874,473.42 |
+| **Executed Attempts** | 100 | 122 | 125 |
+| **Attempts / Mandate** | 1.00 | 1.22 | 1.25 |
+| **Attempts / Recovery** | 1.5385 | 1.5250 | 1.7123 |
+| **Avg Time to Recovery** | 0.0 days | 0.3375 days | 0.6849 days |
+| **Smart Lift vs Control** | — | — | **+8.00 pp** (+12.31% rel) |
+| **Smart Lift vs Baseline** | — | — | **-7.00 pp** (-8.75% rel) |
 | **Safety Violations** | 0 | 0 | **0 (SAFE — 100% compliant)** |
 
 ---
@@ -379,9 +386,9 @@ SettleLoop is deployed on **Vercel** as a unified full-stack web application:
 
 In the interest of technical transparency:
 
-- **Simulated Payments:** SettleLoop is a research and benchmarking simulation platform. It does not integrate with live banking rails or execute live Razorpay transactions.
+- **Simulated Payments vs Real Razorpay Integration:** SettleLoop's multi-day recovery benchmarking operates on deterministic synthetic customer cohorts across Control, Baseline, and Smart arms. It does not execute automated live banking retries. The Phase 3 Razorpay integration provides genuine Test Mode HMAC-verified webhook ingestion and manual-only order creation; manual Razorpay orders are strictly isolated artifacts and do NOT constitute automated payment retries.
 - **Experimental AI Decisioning:** AI-assisted recovery is an experimental decision-support mechanism. Responses depend on prompt context and model availability.
-- **Human Approval Interaction Gap:** While `src/recovery/humanApproval.js` fully implements and tests human approval logic (`requestHumanApproval`, `resolve_approval`, `expireHumanApprovals`), during automated simulation runs (`POST /api/simulations/:runId/run`), approvals are evaluated via timeout and auto-expiration (`expireHumanApprovals`). There is currently no interactive frontend modal or HTTP endpoint in `routes.js` to manually resolve pending approvals mid-simulation.
+- **Human Approval Workflow & Governance:** Phase 6 implemented the operator interface and `POST /api/approvals/:id/resolve` (along with `GET /api/approvals`) for reviewing and resolving pending approvals (Approve/Reject). In automated simulation benchmark runs, approvals that reach their deadline without manual intervention are deterministically auto-expired by `expireHumanApprovals` to prevent simulation stalls.
 - **Not a Production Benchmark:** Metrics produced from synthetic customer cohorts demonstrate simulation mechanics and should not be taken as real-world recovery guarantees.
 - **Step 18 Test #9 — Known Timing/Test Edge Case:** The test *"Guardrail human_review: requestHumanApproval used; pending_human_approval; no duplicate"* intermittently fails across repeated runs on the pre-Phase-2 commit (`82d0318`) and on the Phase 2 HEAD. The failure is not a production safety regression. The root cause is a pseudo-random payment simulator outcome: the test sets a mandate with a scheduled retry due on day 1, then calls `executeSmartPolicy` at `currentDay: 1`. Because a retry is due, `executeSmartPolicy` correctly executes Attempt 2 before running the AI/guardrail pipeline. If Attempt 2 happens to **succeed** (~60% probability, driven by the SHA-256 hash of a randomly generated mandate UUID), the mandate transitions to `recovered` and the `pending_human_approval` assertion block is skipped — the test passes silently. If Attempt 2 **fails** (~40% probability), the AI mock returns `human_review`, the mandate transitions to `pending_human_approval`, and the test then asserts `allAttempts.length === 1` — but 2 attempts legitimately exist (the setup attempt + the executed retry), producing `2 !== 1`. The production escalation path (soft-fail → AI proposal → guardrail → human review) is correct; the test assertion assumes human review is reached without executing the due retry, which contradicts the designed Smart policy execution order. This edge case predates Phase 2 and Phase 3 and was reproduced 1/3 times on commit `82d0318`.
 
@@ -396,7 +403,7 @@ Phase 3 adds genuine Razorpay Test Mode webhook ingestion and a manual-only orde
 | Endpoint | Purpose |
 |---|---|
 | `POST /api/v1/webhooks/razorpay` | Real inbound Razorpay webhook. Validates HMAC-SHA256 signature; idempotent via `event_id`; never touches simulation tables. |
-| `POST /api/v1/razorpay/orders` | **Manual-only.** Creates a real Razorpay Test Mode order artifact. Never triggered by simulation runner. |
+| `POST /api/v1/razorpay/orders` | **Manual-only.** Creates a real Razorpay Test Mode order artifact. It is NOT a payment retry and does NOT execute a payment. Never triggered by simulation runner. |
 
 ### Environment Variables (Phase 3)
 
