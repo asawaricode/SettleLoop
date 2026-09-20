@@ -662,7 +662,7 @@ function resetArchAnimation() {
   archTimers.forEach(t => clearTimeout(t));
   archTimers = [];
 
-  const layers = ['arch-layer-1', 'arch-layer-2', 'arch-layer-3', 'arch-layer-4'];
+  const layers = ['arch-layer-1', 'arch-layer-2', 'arch-layer-3', 'arch-layer-4', 'arch-layer-5', 'arch-layer-razorpay'];
   layers.forEach(id => {
     const el = $(id);
     if (el) el.classList.remove('revealed');
@@ -671,7 +671,8 @@ function resetArchAnimation() {
   const pulseSelectors = [
     '#conn-1 .conn-pulse',
     '#conn-2 .branch-pulse-dot',
-    '#conn-3 .converge-pulse-dot'
+    '#conn-3 .converge-pulse-dot',
+    '#conn-4 .conn-pulse'
   ];
   pulseSelectors.forEach(sel => {
     document.querySelectorAll(sel).forEach(el => el.classList.remove('animating'));
@@ -687,7 +688,7 @@ function playArchAnimation() {
 
   // Respect prefers-reduced-motion
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    ['arch-layer-1', 'arch-layer-2', 'arch-layer-3', 'arch-layer-4'].forEach(id => {
+    ['arch-layer-1', 'arch-layer-2', 'arch-layer-3', 'arch-layer-4', 'arch-layer-5', 'arch-layer-razorpay'].forEach(id => {
       const el = $(id);
       if (el) el.classList.add('revealed');
     });
@@ -728,6 +729,23 @@ function playArchAnimation() {
     const l4 = $('arch-layer-4');
     if (l4) l4.classList.add('revealed');
   }, 2050));
+
+  // 5. Pulse conn-4 (connecting to Oversight & Observability), then reveal Layer 5
+  archTimers.push(setTimeout(() => {
+    const p4 = document.querySelector('#conn-4 .conn-pulse');
+    if (p4) p4.classList.add('animating');
+  }, 2350));
+
+  archTimers.push(setTimeout(() => {
+    const l5 = $('arch-layer-5');
+    if (l5) l5.classList.add('revealed');
+  }, 2650));
+
+  // 6. Reveal isolated Real Razorpay Test Mode Runtime
+  archTimers.push(setTimeout(() => {
+    const lRzp = $('arch-layer-razorpay');
+    if (lRzp) lRzp.classList.add('revealed');
+  }, 3000));
 }
 
 function initArchAnimation() {

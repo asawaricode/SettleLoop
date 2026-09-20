@@ -897,8 +897,7 @@
           <div class="section-badge">Human Oversight &amp; Audit</div>
           <h2 class="section-title">Operator Intelligence &amp; Governance</h2>
           <p class="section-sub">
-            Inspect AI decision traces, resolve pending human approvals, and monitor cryptographically verified Razorpay
-            webhook deliveries.
+            Inspect authoritative decision traces, trigger read-only decision replays, resolve pending human approvals, and monitor cryptographically verified Razorpay webhook deliveries.
           </p>
         </div>
 
@@ -1175,19 +1174,19 @@
               <div class="runtime-pill">
                 <span class="rt-dot dot-data"></span>
                 <span class="rt-name">Synthetic Data</span>
-                <span class="rt-desc">Reproducible mandate workloads</span>
+                <span class="rt-desc">Deterministic mandate workloads &amp; failure seeds</span>
               </div>
               <div class="runtime-divider">•</div>
               <div class="runtime-pill">
                 <span class="rt-dot dot-clock"></span>
                 <span class="rt-name">Persisted Virtual Clock</span>
-                <span class="rt-desc">Deterministic zero-wait timeline</span>
+                <span class="rt-desc">Deterministic zero-wait timeline &amp; day progression</span>
               </div>
               <div class="runtime-divider">•</div>
               <div class="runtime-pill">
                 <span class="rt-dot dot-db"></span>
                 <span class="rt-name">Supabase PostgreSQL</span>
-                <span class="rt-desc">State machine &amp; atomic RPC store</span>
+                <span class="rt-desc">State machine &amp; atomic RPC enforcement store</span>
               </div>
             </div>
           </div>
@@ -1216,7 +1215,7 @@
                     experiment arms</span>
                 </div>
               </div>
-              <div class="engine-hub-badge">EVALUATES 3 PARALLEL ARMS</div>
+              <div class="engine-hub-badge">DISPATCHES 3 PARALLEL ARMS</div>
             </div>
           </div>
 
@@ -1267,7 +1266,7 @@
                   <div class="outcome-tag-row">
                     <span class="pill-stand-terminal">🛑 Stand Down (Terminal)</span>
                   </div>
-                  <p class="arm-summary">Zero retry attempts. Measures unassisted baseline loss.</p>
+                  <p class="arm-summary">Zero retry attempts. Measures unassisted baseline loss benchmark.</p>
                 </div>
               </div>
 
@@ -1315,20 +1314,24 @@
 
                 <!-- Compact Smart Decisioning Flow -->
                 <div class="smart-compact-chain">
-                  <div class="smart-chain-step step-classify">
+                  <div class="smart-chain-step step-classify" title="Classifies decline reason: soft, hard, or unknown">
                     <span class="s-n">1</span>
                     <span class="s-name">Failure Classifier</span>
                   </div>
                   <div class="s-arr">→</div>
-                  <div class="smart-chain-step step-ai">
+                  <div class="smart-chain-step step-ai" title="Gemini proposes action, delay &amp; reasoning. Deterministic policy assigns 0.80 confidence.">
                     <span class="s-n">2</span>
                     <span class="s-name">AI Agent (Gemini)</span>
                   </div>
                   <div class="s-arr">→</div>
-                  <div class="smart-chain-step step-guard">
+                  <div class="smart-chain-step step-guard" title="Deterministic boundaries: blocks hard declines, limits delay ≤7d, caps retries &lt;4">
                     <span class="s-n">3</span>
                     <span class="s-name">Guardrails</span>
                   </div>
+                </div>
+
+                <div class="smart-policy-note">
+                  Gemini returns action &amp; delay · Policy sets 0.80 confidence (not from Gemini)
                 </div>
 
                 <div class="arm-enforced-box smart-enforced-box">
@@ -1426,6 +1429,209 @@
                     <span class="es-title">METRICS</span>
                     <span class="es-sub">Recovery rate, lift vs baseline, &amp; safety stats</span>
                   </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- Connector 4 -> Oversight -->
+          <div class="arch-flow-arrow-v" id="conn-4">
+            <div class="arrow-line"></div>
+            <div class="arrow-head">▼</div>
+            <div class="conn-pulse pulse-4"></div>
+          </div>
+
+          <!-- LAYER 5: OVERSIGHT & OBSERVABILITY -->
+          <div class="arch-layer layer-5" id="arch-layer-5">
+            <div class="layer-tag-label">OPERATOR OVERSIGHT &amp; GOVERNANCE (READ-ONLY OBSERVABILITY)</div>
+            <div class="oversight-quad-grid">
+
+              <!-- 1. Decision Trace -->
+              <div class="oversight-arch-card">
+                <div class="oac-top">
+                  <span class="oac-badge tag-purple">Audit &amp; Trace</span>
+                  <div class="oac-title">Decision Trace</div>
+                </div>
+                <p class="oac-desc">
+                  Inspects end-to-end mandate audit trail, failure classification, policy decisions, and guardrail validation.
+                </p>
+                <div class="oac-footer">
+                  <span>Reads audit_logs</span>
+                </div>
+              </div>
+
+              <!-- 2. Decision Replay -->
+              <div class="oversight-arch-card">
+                <div class="oac-top">
+                  <span class="oac-badge tag-green">Read-Only Replay</span>
+                  <div class="oac-title">Decision Replay</div>
+                </div>
+                <p class="oac-desc">
+                  Authoritative causal reconstruction. Does not execute recovery, change state, create attempts, trigger Razorpay actions, or alter metrics.
+                </p>
+                <div class="oac-footer">
+                  <span>Zero side effects</span>
+                </div>
+              </div>
+
+              <!-- 3. Pending Human Approvals -->
+              <div class="oversight-arch-card">
+                <div class="oac-top">
+                  <span class="oac-badge tag-amber">Human-in-the-Loop</span>
+                  <div class="oac-title">Pending Approvals</div>
+                </div>
+                <p class="oac-desc">
+                  Operator review boundary for flagged mandates. Human approval transitions mandate state; does not execute payment.
+                </p>
+                <div class="oac-footer">
+                  <span>Mandate state gate</span>
+                </div>
+              </div>
+
+              <!-- 4. Webhook Verification Status -->
+              <div class="oversight-arch-card">
+                <div class="oac-top">
+                  <span class="oac-badge tag-blue">Cryptographic Ingestion</span>
+                  <div class="oac-title">Webhook Status</div>
+                </div>
+                <p class="oac-desc">
+                  Real-time HMAC-SHA256 signature verification and idempotency monitoring for inbound Razorpay events.
+                </p>
+                <div class="oac-footer">
+                  <span>webhook_events monitor</span>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- REAL RAZORPAY TEST MODE INTEGRATION (ISOLATED RUNTIME) -->
+          <div class="arch-layer layer-razorpay" id="arch-layer-razorpay">
+            <div class="razorpay-isolation-container">
+
+              <!-- Isolation Header Banner -->
+              <div class="razorpay-isolation-banner">
+                <div class="iso-left">
+                  <div class="iso-badge">REAL TEST MODE — ISOLATED FROM SYNTHETIC EXPERIMENT DATA</div>
+                  <div class="iso-title">Real Razorpay Test Mode Integration</div>
+                </div>
+                <div class="iso-guarantee">
+                  <span class="iso-lock-icon">🔒</span>
+                  <span>Strict isolation: zero mutations to mandates, attempts, simulation_runs, or recovery metrics</span>
+                </div>
+              </div>
+
+              <!-- Inbound & Outbound Dual Paths -->
+              <div class="razorpay-dual-grid">
+
+                <!-- Inbound Webhook Flow -->
+                <div class="rzp-flow-box flow-inbound">
+                  <div class="rzp-box-header">
+                    <div class="rzp-pill pill-blue">INBOUND PIPELINE</div>
+                    <div class="rzp-box-title">Razorpay Test Mode Ingestion</div>
+                  </div>
+                  <div class="rzp-steps-vertical">
+                    <div class="rzp-vstep">
+                      <span class="rv-dot"></span>
+                      <div class="rv-body">
+                        <span class="rv-label">Source</span>
+                        <span class="rv-val">Razorpay Test Mode</span>
+                      </div>
+                    </div>
+                    <div class="rv-connector">↓</div>
+                    <div class="rzp-vstep">
+                      <span class="rv-dot"></span>
+                      <div class="rv-body">
+                        <span class="rv-label">Endpoint</span>
+                        <span class="rv-val">POST /api/v1/webhooks/razorpay</span>
+                      </div>
+                    </div>
+                    <div class="rv-connector">↓</div>
+                    <div class="rzp-vstep">
+                      <span class="rv-dot"></span>
+                      <div class="rv-body">
+                        <span class="rv-label">Verification</span>
+                        <span class="rv-val">Raw-body HMAC-SHA256 verification</span>
+                      </div>
+                    </div>
+                    <div class="rv-connector">↓</div>
+                    <div class="rzp-vstep">
+                      <span class="rv-dot"></span>
+                      <div class="rv-body">
+                        <span class="rv-label">Idempotency</span>
+                        <span class="rv-val">Webhook idempotency via webhook_events</span>
+                      </div>
+                    </div>
+                    <div class="rv-connector">↓</div>
+                    <div class="rzp-vstep rv-terminal">
+                      <span class="rv-dot dot-dest"></span>
+                      <div class="rv-body">
+                        <span class="rv-label">Destination</span>
+                        <span class="rv-val">webhook_events + audit_logs</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Outbound Manual Order Flow -->
+                <div class="rzp-flow-box flow-outbound">
+                  <div class="rzp-box-header">
+                    <div class="rzp-pill pill-purple">OUTBOUND PIPELINE</div>
+                    <div class="rzp-box-title">Manual Order Creation</div>
+                  </div>
+                  <div class="rzp-steps-vertical">
+                    <div class="rzp-vstep">
+                      <span class="rv-dot"></span>
+                      <div class="rv-body">
+                        <span class="rv-label">Initiator</span>
+                        <span class="rv-val">Dashboard operator</span>
+                      </div>
+                    </div>
+                    <div class="rv-connector">↓</div>
+                    <div class="rzp-vstep">
+                      <span class="rv-dot"></span>
+                      <div class="rv-body">
+                        <span class="rv-label">Action</span>
+                        <span class="rv-val">Manual Razorpay Test Mode Order</span>
+                      </div>
+                    </div>
+                    <div class="rv-connector">↓</div>
+                    <div class="rzp-vstep">
+                      <span class="rv-dot"></span>
+                      <div class="rv-body">
+                        <span class="rv-label">Preflight</span>
+                        <span class="rv-val">Smart mandate + RETRY + attempts &lt; 4</span>
+                      </div>
+                    </div>
+                    <div class="rv-connector">↓</div>
+                    <div class="rzp-vstep">
+                      <span class="rv-dot"></span>
+                      <div class="rv-body">
+                        <span class="rv-label">Gateway API</span>
+                        <span class="rv-val">Razorpay Orders API</span>
+                      </div>
+                    </div>
+                    <div class="rv-connector">↓</div>
+                    <div class="rzp-vstep rv-terminal">
+                      <span class="rv-dot dot-dest"></span>
+                      <div class="rv-body">
+                        <span class="rv-label">Artifact</span>
+                        <span class="rv-val">Real Test Mode order artifact</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+              </div>
+
+              <!-- Product Distinction Callout Banner -->
+              <div class="rzp-distinction-banner">
+                <div class="distinction-quote">
+                  &ldquo;This creates a real Razorpay Test Mode order artifact. It is not a payment retry and does not execute a payment.&rdquo;
+                </div>
+                <div class="distinction-sub">
+                  Real webhook/order records do not mutate mandates, attempts, simulation_runs, or synthetic experiment metrics.
                 </div>
               </div>
 
