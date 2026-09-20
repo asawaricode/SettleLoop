@@ -64,7 +64,7 @@ function hashString(str, seed = 5381) {
  *
  * Inputs incorporated:
  *   seed              — simulation-level randomness anchor
- *   mandateId         — mandates.id UUID (unique per mandate row)
+ *   mandateId         — deterministic synthetic identifier (mandates.mandate_id or mandates.id fallback)
  *   attemptNumber     — which attempt this is (must materially vary the result)
  *   amount            — payment amount (float, 100–50000)
  *   balanceVolatility — account balance variability (float, 0.0000–1.0000)
@@ -140,7 +140,7 @@ function validateInputs({ seed, mandateId, attemptNumber, amount, balanceVolatil
     throw new Error("paymentSimulator: seed must be a finite number");
   }
   if (!mandateId || typeof mandateId !== "string" || mandateId.trim() === "") {
-    throw new Error("paymentSimulator: mandateId must be a non-empty string (mandates.id UUID)");
+    throw new Error("paymentSimulator: mandateId must be a non-empty string");
   }
   if (!Number.isInteger(attemptNumber) || attemptNumber < 1) {
     throw new Error("paymentSimulator: attemptNumber must be a positive integer");
@@ -172,7 +172,7 @@ function validateInputs({ seed, mandateId, attemptNumber, amount, balanceVolatil
  *
  * @param {object} params
  * @param {number} params.seed              - Run's random_seed (uint32).
- * @param {string} params.mandateId         - mandates.id UUID (NOT mandate_id display field).
+ * @param {string} params.mandateId         - Deterministic mandate identifier (mandates.mandate_id or mandates.id fallback).
  * @param {number} params.attemptNumber     - 1-based attempt counter (positive integer).
  * @param {number} params.amount            - Payment amount in INR, float in [100, 50000].
  * @param {number} params.balanceVolatility - Account balance variability, float in [0, 1].

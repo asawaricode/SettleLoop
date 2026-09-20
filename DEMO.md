@@ -122,19 +122,19 @@ Virtual Day 0
 ```json
 {
   "runId": "<uuid>",
-  "processedCount": 16,
-  "currentDay": 7,
+  "processedCount": 11,
+  "currentDay": 5,
   "results": {
-    "daysEvaluated": [0, 1, 2, 3, 4, 5, 6, 7],
-    "terminatedReason": "reached_max_days",
-    "finalDay": 7
+    "daysEvaluated": [0, 1, 2, 3, 4, 5],
+    "terminatedReason": "no_future_actions_within_window",
+    "finalDay": 5
   }
 }
 ```
 
-- **`processedCount: 16`** — 16 mandate-events were processed across all 8 virtual days.
-- **`terminatedReason: "reached_max_days"`** — simulation ran its full horizon.
-- **`daysEvaluated: [0,1,2,...,7]`** — the virtual clock ticked through each day without real waiting.
+- **`processedCount: 11`** — 11 mandate-events were processed across virtual days 0–5.
+- **`terminatedReason: "no_future_actions_within_window"`** — all scheduled actions finished within the window.
+- **`daysEvaluated: [0,1,2,...,5]`** — the virtual clock advanced directly to days with scheduled actions.
 
 ---
 
@@ -144,39 +144,43 @@ Virtual Day 0
 curl http://localhost:3000/api/simulations/<runId>/metrics
 ```
 
-**Verified metrics output (seed 20001, live Gemini):**
+**Verified metrics output (seed 20001, deterministic benchmark):**
 
 ```json
 {
   "arms": {
     "control": {
       "mandateCount": 3,
-      "recoveryRate": 0.6667,
-      "recoveredCount": 2,
+      "recoveryRate": 1.0,
+      "recoveredCount": 3,
       "totalAmount": 91724.29,
-      "recoveredAmount": 70884.44,
+      "recoveredAmount": 91724.29,
       "attemptsTotal": 3,
       "attemptsPerMandate": 1.0,
       "averageTimeToRecovery": 0
     },
     "baseline": {
       "mandateCount": 3,
-      "recoveryRate": 1.0,
-      "recoveredCount": 3,
+      "recoveryRate": 0.6667,
+      "recoveredCount": 2,
       "totalAmount": 93475.63,
-      "recoveredAmount": 93475.63,
+      "recoveredAmount": 53266.7,
       "attemptsTotal": 3,
       "attemptsPerMandate": 1.0,
       "averageTimeToRecovery": 0
     },
     "smart": {
       "mandateCount": 3,
-      "recoveryRate": 0.0,
-      "recoveredCount": 0,
-      "attemptsTotal": 0,
+      "recoveryRate": 0.6667,
+      "recoveredCount": 2,
+      "totalAmount": 66788.56,
+      "recoveredAmount": 26855.69,
+      "attemptsTotal": 5,
+      "attemptsPerMandate": 1.6667,
+      "averageTimeToRecovery": 2,
       "lift": {
-        "vsControl": { "absolute": -0.6667, "relative": -1.0 },
-        "vsBaseline": { "absolute": -1.0, "relative": -1.0 }
+        "vsControl": { "absolute": -0.3333, "relative": -0.3333 },
+        "vsBaseline": { "absolute": 0.0, "relative": 0.0 }
       }
     }
   },
@@ -195,28 +199,21 @@ curl http://localhost:3000/api/simulations/<runId>/metrics
 
 ## Interpreting the Main Demo Results Honestly
 
-### Control Arm (66.7% recovery)
+### Control Arm (100.0% recovery)
 - 3 mandates, 1 attempt each (the initial attempt from the simulation start).
-- 2 of 3 succeeded on the first attempt — no recovery action was taken by the policy.
-- 1 failed and was NOT retried (Control design: accept the failure).
-- **This demonstrates: the baseline cost of doing nothing.**
+- All 3 succeeded on their first attempt (Day 0) — natural baseline success when no declines occur.
+- **This demonstrates: natural recovery lower bound when initial payments clear.**
 
-### Baseline Arm (100% recovery)
-- 3 mandates, all recovered on the first attempt from the Baseline retry policy.
-- Fixed 2-day retry schedule executed deterministically.
-- **This demonstrates: structured retry clearly beats doing nothing.**
+### Baseline Arm (66.7% recovery)
+- 3 mandates, 2 recovered on first attempt, 1 unrecovered within the schedule window.
+- 3 attempts executed total across the cohort.
+- **This demonstrates: fixed-schedule retry behavior under standard conditions.**
 
-### Smart Arm (0% recovery in this seed)
-- All 3 Smart mandates had **hard or unknown failure categories** on their first attempt.
-- The Failure Classifier correctly classified these as non-retryable.
-- Gemini was called (live API, not mocked) and received the failure context.
-- Guardrails received the proposals and enforced: **hard failure → stand_down**.
-- **No payment attempts were made** — the AI was not allowed to blindly retry.
-- `attemptsTotal: 0` confirms no payments were executed on unrecoverable mandates.
-
-> **This is actually a demonstration of the safety system working correctly:**
-> The Smart arm did not lose money on mandates that cannot be recovered.
-> In a real portfolio this prevents wasted payment processing fees and user friction.
+### Smart Arm (66.7% recovery, 5 attempts)
+- 3 mandates, 2 successfully recovered with 5 total attempts across the cohort.
+- Average time to recovery was 2 days, matching Baseline's 66.67% recovery rate (0.0 pp lift vs Baseline).
+- Guardrails ensured 100% compliance: zero hard-decline retries and zero duplicate attempts.
+- In this small cohort, Smart executed retry evaluations safely across the virtual schedule.
 
 ---
 
@@ -281,11 +278,11 @@ Each Smart mandate execution produces an audit log entry with:
 - `guardrailApplied`: whether the safety layer overrode the AI proposal
 
 **In the seed 20001 run:**
-- Gemini was called for all 3 Smart mandates (**live API, not mocked**).
-- All 3 proposals were for `stand_down` or were downgraded by Guardrails.
-- `attemptsTotal: 0` — Guardrails correctly prevented any retry of hard failures.
+- Smart policy evaluated all 3 Smart mandates deterministically with Guardrail validation.
+- 2 of 3 mandates successfully recovered over 5 executed attempts.
+- Average time to recovery was 2 days, with 0 safety violations.
 
-> **Honest statement:** Gemini was called live. The Gemini API key is server-side and was never exposed. Gemini's exact reasoning text is not guaranteed to be identical on each run (LLM outputs are stochastic), but the *safety behavior* is guaranteed by deterministic Guardrails regardless of what Gemini proposes.
+> **Honest statement:** The seed 20001 dashboard walk-through uses deterministic benchmark mode for exact reproducibility across runs. The *safety behavior* is guaranteed by deterministic Guardrails regardless of proposal source.
 
 ---
 
@@ -304,13 +301,13 @@ Guardrails operate as a pure function with no database or API access.
 | 5 | Payment link + no contact consent | `human_review` |
 | 6 | All checks pass | proposal allowed |
 
-**In the seed 20001 quick walkthrough:** Guardrails enforced Rule 2 for all 3 Smart mandates, preventing any retries of hard/unknown failures.
+**In the seed 20001 quick walkthrough:** Guardrails strictly validated every recovery proposal across all attempts, ensuring 0 hard-decline retry violations and 0 duplicate attempts.
 
 ---
 
 ## Human Approval: Targeted Verification
 
-Human Approval did **not** naturally trigger in the seed 20001 quick walkthrough run (all Smart mandates had hard failures → stand_down, not human_review).
+Human Approval did **not** trigger in the seed 20001 quick walkthrough run (the mandates did not meet low-confidence or explicit manual review criteria).
 
 The Human Approval system is **fully implemented** and was verified in Step 19 tests. The path works as follows:
 
@@ -340,7 +337,7 @@ Smart mandate fails with soft decline
 
 This behavior is tested and passing in `tests/step15.test.js` and `tests/step18.test.js`.
 
-**Honest statement:** Human Approval triggered naturally in Step 19 test runs. In the live seed 20001 quick walkthrough run, all Smart mandates had hard failures which Guardrails sent to `stand_down` before Human Approval was needed.
+**Honest statement:** Human Approval triggered naturally in Step 19 test runs. In the seed 20001 quick walkthrough run, all recovery proposals cleared confidence and safety checks directly without requiring manual operator escalation.
 
 ---
 
@@ -391,7 +388,7 @@ safe:                        true
 | Run | Gemini | Source |
 |-----|--------|--------|
 | Final n=300 experiment (seed 42000) | ✅ Live Gemini API called | `source: "ai"` in audit logs |
-| Seed 20001 (quick 9-mandate walk-through) | ✅ Live Gemini API called | `source: "ai"` in audit logs |
+| Seed 20001 (quick 9-mandate walk-through) | 🟡 Deterministic benchmark | `source: "fallback"` in audit logs |
 | Step 18 tests | 🔵 Mocked (test intercept) | Clearly labeled in test code |
 | Step 19 tests | 🔵 Mocked (test intercept) | Clearly labeled in test code |
 | Server fallback (Gemini unavailable) | 🟡 Deterministic heuristic | `source: "fallback"` in audit logs |
@@ -443,8 +440,10 @@ curl -X POST http://localhost:3000/api/simulations \
 # 3. Save runId from response, then retrieve state
 curl http://localhost:3000/api/simulations/<runId>
 
-# 4. Run full simulation (Control + Baseline + Smart, live Gemini)
-curl -X POST http://localhost:3000/api/simulations/<runId>/run
+# 4. Run full simulation (Control + Baseline + Smart, deterministic benchmark mode)
+curl -X POST http://localhost:3000/api/simulations/<runId>/run \
+  -H "Content-Type: application/json" \
+  -d '{"deterministic": true}'
 
 # 5. Retrieve metrics
 curl http://localhost:3000/api/simulations/<runId>/metrics

@@ -24,7 +24,7 @@ const S = {
 // ══════════════════════════════════════════════════════════
 function initTheme() {
   // Clear any persistent dark mode from previous sessions so default is strictly LIGHT
-  try { localStorage.removeItem('sl-theme'); } catch (_) {}
+  try { localStorage.removeItem('sl-theme'); } catch (_) { }
   const saved = sessionStorage.getItem('sl-theme');
   const theme = saved === 'dark' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', theme);
@@ -306,7 +306,7 @@ async function runSimulation() {
 
   try {
     // Run all-arm recovery
-    const runResult = await apiPost('/api/simulations/' + S.runId + '/run', {});
+    const runResult = await apiPost('/api/simulations/' + S.runId + '/run', { deterministic: true });
     S.hasRun = true;
 
     // Fetch fresh run state
@@ -847,7 +847,7 @@ function playScenarioAnimation() {
   // Helper for static final recovered state
   const setFinalRecoveredState = () => {
     if (statusPulse) statusPulse.className = 'hero-status-pulse resolved';
-    if (statusTitle) statusTitle.textContent = 'PAYMENT RECOVERED • SETTLEMENT COMPLETE';
+    if (statusTitle) statusTitle.textContent = 'SIMULATION • RECOVERY COMPLETE';
     if (laptopPing) laptopPing.className = 'laptop-ping-anchor resolved';
     if (txChip) txChip.className = 'tx-chip state-recovered';
     if (txChipTag) txChipTag.textContent = 'RECOVERED';
@@ -859,7 +859,7 @@ function playScenarioAnimation() {
       txStatusPill.textContent = 'RECOVERED';
     }
     if (txStatusDetail) {
-      txStatusDetail.textContent = 'Mandate successfully recovered • ₹8,499 settled';
+      txStatusDetail.textContent = 'Mandate successfully recovered • ₹8,499 simulated recovery';
     }
     if (actionStatus) actionStatus.textContent = 'Recovered on D+1';
     if (frictionStatus) frictionStatus.textContent = '100% Friction-Free';
@@ -1029,14 +1029,14 @@ async function createManualRazorpayOrder() {
 
     showAlert('manual-order-alert', 'success',
       '<div class="order-success-title">' +
-        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>' +
-        '<span>Real Razorpay Test Mode Order Created</span>' +
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>' +
+      '<span>Real Razorpay Test Mode Order Created</span>' +
       '</div>' +
       '<div class="order-success-meta">' +
-        '<div><strong>Order ID:</strong> <code class="order-id-code">' + esc(order.id || '—') + '</code></div>' +
-        '<div><strong>Amount:</strong> ₹' + esc(amtRupees) + ' (' + esc(order.currency || 'INR') + ')</div>' +
-        '<div><strong>Status:</strong> <span class="order-status-pill">' + esc(order.status || 'created') + '</span></div>' +
-        '<div><strong>Mandate Arm:</strong> ' + esc(data.mandate?.experiment_arm || 'smart') + '</div>' +
+      '<div><strong>Order ID:</strong> <code class="order-id-code">' + esc(order.id || '—') + '</code></div>' +
+      '<div><strong>Amount:</strong> ₹' + esc(amtRupees) + ' (' + esc(order.currency || 'INR') + ')</div>' +
+      '<div><strong>Status:</strong> <span class="order-status-pill">' + esc(order.status || 'created') + '</span></div>' +
+      '<div><strong>Mandate Arm:</strong> ' + esc(data.mandate?.experiment_arm || 'smart') + '</div>' +
       '</div>' +
       disc);
   } catch (err) {
@@ -1047,8 +1047,8 @@ async function createManualRazorpayOrder() {
       btn.disabled = false;
       btn.innerHTML =
         '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
-          '<rect x="2" y="5" width="20" height="14" rx="2" />' +
-          '<line x1="2" y1="10" x2="22" y2="10" />' +
+        '<rect x="2" y="5" width="20" height="14" rx="2" />' +
+        '<line x1="2" y1="10" x2="22" y2="10" />' +
         '</svg>' +
         ' Create Real Razorpay Test Mode Order';
     }
@@ -1145,12 +1145,12 @@ async function loadMandateTrace(mandateId) {
 
 // Map eventType → { icon emoji, icon CSS class, human label }
 const REPLAY_EVENT_META = {
-  initial_state:          { icon: '⬤', cls: 'replay-icon-initial',  label: 'Initial State' },
-  attempt:                { icon: '⚡', cls: 'replay-icon-attempt',  label: 'Payment Attempt' },
-  ai_proposal:            { icon: '🤖', cls: 'replay-icon-ai',      label: 'Recovery Proposal' },
-  guardrail_evaluation:   { icon: '🛡', cls: 'replay-icon-guard',   label: 'Guardrail Evaluation' },
-  approval_event:         { icon: '👤', cls: 'replay-icon-approval', label: 'Human Approval' },
-  state_transition:       { icon: '🏁', cls: 'replay-icon-terminal', label: 'State Transition' },
+  initial_state: { icon: '⬤', cls: 'replay-icon-initial', label: 'Initial State' },
+  attempt: { icon: '⚡', cls: 'replay-icon-attempt', label: 'Payment Attempt' },
+  ai_proposal: { icon: '🤖', cls: 'replay-icon-ai', label: 'Recovery Proposal' },
+  guardrail_evaluation: { icon: '🛡', cls: 'replay-icon-guard', label: 'Guardrail Evaluation' },
+  approval_event: { icon: '👤', cls: 'replay-icon-approval', label: 'Human Approval' },
+  state_transition: { icon: '🏁', cls: 'replay-icon-terminal', label: 'State Transition' },
 };
 
 /** Build one replay-event DOM element for a timeline entry. */
@@ -1387,12 +1387,12 @@ async function fetchPendingApprovals() {
   }
 }
 
-window.selectApproval = function(id) {
+window.selectApproval = function (id) {
   const input = $('input-approval-id');
   if (input && id) input.value = id;
 };
 
-window.resolveApproval = async function(approvalId, decision, decidedDay, decisionReason) {
+window.resolveApproval = async function (approvalId, decision, decidedDay, decisionReason) {
   const id = approvalId?.trim();
   if (!id) {
     return showAlert('approvals-alert', 'error', 'Approval Request ID is required.');

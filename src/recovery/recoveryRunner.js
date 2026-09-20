@@ -148,10 +148,14 @@ export async function runControlBaselineRecovery({ runId }) {
  *   finalDay: number
  * }>}
  */
-export async function runAllRecovery({ runId }) {
+export async function runAllRecovery({ runId, benchmark = false, deterministic = false }) {
   if (!runId || typeof runId !== 'string' || runId.trim() === '') {
     throw new Error('recoveryRunner: runId must be a non-empty string');
   }
+
+  const isBenchmark = Boolean(
+    benchmark || deterministic || process.env.BENCHMARK_MODE === 'true'
+  );
 
   // 1. Fetch simulation run
   const { data: run, error: rErr } = await supabase
@@ -200,6 +204,8 @@ export async function runAllRecovery({ runId }) {
       seed: run.random_seed,
       allowedArms: allArms,
       run: freshRun || run,
+      benchmark: isBenchmark,
+      deterministic: isBenchmark,
     });
 
     totalProcessed += dayResult.processedCount;

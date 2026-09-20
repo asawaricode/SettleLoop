@@ -111,9 +111,14 @@ async function executePaymentAttempt({ runId, mandate, currentDay, seed, channel
   }
 
   // 3. Run payment simulator (NEVER pass currentDay or experiment_arm)
+  const simMandateId =
+    mandate.mandate_id && /^M-\d+$/.test(mandate.mandate_id)
+      ? mandate.mandate_id
+      : (mandate.id || mandate.mandate_id);
+
   const simResult = simulatePayment({
     seed,
-    mandateId: mandate.id,
+    mandateId: simMandateId,
     attemptNumber: attempt.attempt_number,
     amount: mandate.amount,
     balanceVolatility: mandate.balance_volatility,
@@ -310,7 +315,16 @@ async function scheduleRetry({ runId, mandate, currentDay, attempt, retryDay, re
  * @param {object} params.run - simulation_runs row
  * @returns {Promise<object>} Final mandate state
  */
-async function runSmartDecision({ runId, mandate, currentDay, seed, latestFailure, run }) {
+async function runSmartDecision({
+  runId,
+  mandate,
+  currentDay,
+  seed,
+  latestFailure,
+  run,
+  benchmark = false,
+  deterministic = false,
+}) {
   if (!latestFailure) {
     throw new Error('smartPolicy: runSmartDecision requires a completed failure attempt');
   }
@@ -355,7 +369,7 @@ async function runSmartDecision({ runId, mandate, currentDay, seed, latestFailur
   let aiProposal;
   try {
     aiProposal = await proposeSmartRecoveryAction({
-      mandateId: mandate.id,
+      mandateId: mandate.mandate_id || mandate.id,
       attemptsUsed: mandate.attempts_used,
       maxAttempts: MAX_SMART_ATTEMPTS,
       amount: mandate.amount,
@@ -363,6 +377,8 @@ async function runSmartDecision({ runId, mandate, currentDay, seed, latestFailur
       category: classification.category,
       retryEligible: classification.retryEligible,
       declineCode: classification.declineCode,
+      benchmark,
+      deterministic,
     });
   } catch (aiErr) {
     // AI call failed unexpectedly — fall back to stand_down as safest option
@@ -561,7 +577,15 @@ async function runSmartDecision({ runId, mandate, currentDay, seed, latestFailur
  * @param {object} params.run - simulation_runs row (includes max_days)
  * @returns {Promise<object>} Final mandate record
  */
-export async function executeSmartPolicy({ runId, mandate, currentDay, seed, run }) {
+export async function executeSmartPolicy({
+  runId,
+  mandate,
+  currentDay,
+  seed,
+  run,
+  benchmark = false,
+  deterministic = false,
+}) {
   if (!runId || typeof runId !== 'string' || runId.trim() === '') {
     throw new Error('smartPolicy: runId must be a non-empty string');
   }
@@ -630,13 +654,29 @@ export async function executeSmartPolicy({ runId, mandate, currentDay, seed, run
   // ── Execute payment attempt (initial attempt or due scheduled retry) ───────
   // If payment succeeds -> recovered (no AI decision needed).
   // If payment fails -> executeAttemptAndDecide calls runSmartDecision with actual failure.
-  return await executeAttemptAndDecide({ runId, mandate, currentDay, seed, run });
+  return await executeAttemptAndDecide({
+    runId,
+    mandate,
+    currentDay,
+    seed,
+    run,
+    benchmark,
+    deterministic,
+  });
 }
 
 /**
  * Executes exactly one payment attempt and then runs post-failure Smart decision if needed.
  */
-async function executeAttemptAndDecide({ runId, mandate, currentDay, seed, run }) {
+async function executeAttemptAndDecide({
+  runId,
+  mandate,
+  currentDay,
+  seed,
+  run,
+  benchmark = false,
+  deterministic = false,
+}) {
   const { attempt, simResult, updatedMandate } = await executePaymentAttempt({
     runId,
     mandate,
@@ -694,5 +734,7 @@ async function executeAttemptAndDecide({ runId, mandate, currentDay, seed, run }
     seed,
     latestFailure,
     run,
+    benchmark,
+    deterministic,
   });
 }

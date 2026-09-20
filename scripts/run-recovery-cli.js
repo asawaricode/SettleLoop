@@ -21,11 +21,16 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`[CLI] Starting recovery runner for simulation run: ${runId}`);
+  const isBenchmark =
+    process.argv.includes('--deterministic') ||
+    process.argv.includes('--benchmark') ||
+    process.env.BENCHMARK_MODE === 'true';
+
+  console.log(`[CLI] Starting recovery runner for simulation run: ${runId}${isBenchmark ? ' [BENCHMARK MODE]' : ''}`);
   const startTime = Date.now();
 
   try {
-    const result = await runAllRecovery({ runId });
+    const result = await runAllRecovery({ runId, benchmark: isBenchmark, deterministic: isBenchmark });
     const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(2);
 
     console.log(`[CLI] Recovery execution COMPLETED in ${elapsedSeconds}s.`);

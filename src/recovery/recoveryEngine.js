@@ -20,7 +20,15 @@ import { executeSmartPolicy } from './smartPolicy.js';
  * @param {object} [params.run] - simulation_runs row (required for 'smart' arm)
  * @returns {Promise<object>} Updated mandate record
  */
-export async function processMandate({ runId, mandate, currentDay, seed, run }) {
+export async function processMandate({
+  runId,
+  mandate,
+  currentDay,
+  seed,
+  run,
+  benchmark = false,
+  deterministic = false,
+}) {
   if (!runId || typeof runId !== 'string' || runId.trim() === '') {
     throw new Error('recoveryEngine: runId must be a non-empty string');
   }
@@ -57,7 +65,15 @@ export async function processMandate({ runId, mandate, currentDay, seed, run }) 
       if (!run) {
         throw new Error('Smart policy is not yet enabled in Recovery Engine (run parameter required)');
       }
-      return await executeSmartPolicy({ runId, mandate, currentDay, seed, run });
+      return await executeSmartPolicy({
+        runId,
+        mandate,
+        currentDay,
+        seed,
+        run,
+        benchmark,
+        deterministic,
+      });
     }
 
     default:
@@ -96,6 +112,8 @@ export async function processDueMandates({
   seed,
   allowedArms = ['control', 'baseline'],
   run,
+  benchmark = false,
+  deterministic = false,
 }) {
   if (!runId || typeof runId !== 'string' || runId.trim() === '') {
     throw new Error('recoveryEngine: runId must be a non-empty string');
@@ -159,6 +177,8 @@ export async function processDueMandates({
       currentDay,
       seed,
       run,
+      benchmark,
+      deterministic,
     });
 
     processedCount++;

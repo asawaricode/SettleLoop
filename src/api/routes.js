@@ -75,7 +75,13 @@ router.post('/simulations/:runId/run', async (req, res) => {
       return res.status(400).json({ error: 'runId is required' });
     }
 
-    const runnerResult = await runAllRecovery({ runId });
+    const { benchmark, deterministic } = req.body || {};
+    const isBenchmark = Boolean(benchmark || deterministic || process.env.BENCHMARK_MODE === 'true');
+    const runnerResult = await runAllRecovery({
+      runId,
+      benchmark: isBenchmark,
+      deterministic: isBenchmark,
+    });
 
     return res.status(200).json({
       runId: runnerResult.runId,

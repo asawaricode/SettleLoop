@@ -109,7 +109,8 @@ export async function getSimulationMetrics({ runId }) {
     .select(
       'id, mandate_id, run_id, experiment_arm, amount, status, first_due_day, attempts_used, contact_consent'
     )
-    .eq('run_id', runId);
+    .eq('run_id', runId)
+    .order('mandate_id', { ascending: true });
 
   if (mErr) {
     throw new Error(`getSimulationMetrics: failed to fetch mandates: ${mErr.message}`);
@@ -121,7 +122,8 @@ export async function getSimulationMetrics({ runId }) {
     .select(
       'id, mandate_id, attempt_number, scheduled_day, executed_day, channel, outcome, decline_category, retry_eligible, idempotency_key, notification_sent_day, notification_message'
     )
-    .eq('run_id', runId);
+    .eq('run_id', runId)
+    .order('attempt_number', { ascending: true });
 
   if (aErr) {
     throw new Error(`getSimulationMetrics: failed to fetch attempts: ${aErr.message}`);

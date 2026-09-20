@@ -89,9 +89,14 @@ export async function executeBaselinePolicy({ runId, mandate, currentDay, seed }
   }
 
   // Step 3: Run payment simulator (NEVER pass currentDay or experiment_arm)
+  const simMandateId =
+    mandate.mandate_id && /^M-\d+$/.test(mandate.mandate_id)
+      ? mandate.mandate_id
+      : (mandate.id || mandate.mandate_id);
+
   const simResult = simulatePayment({
     seed,
-    mandateId: mandate.id,
+    mandateId: simMandateId,
     attemptNumber: attempt.attempt_number,
     amount: mandate.amount,
     balanceVolatility: mandate.balance_volatility,
