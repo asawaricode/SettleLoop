@@ -2,6 +2,7 @@ import { supabase } from '../config/supabase.js';
 import { simulatePayment } from '../simulators/paymentSimulator.js';
 import { logAudit } from '../utils/auditLogger.js';
 import { assertTransition } from '../stateMachine/mandateStateMachine.js';
+import { assertMandateAction } from './mandateTransitions.js';
 
 /**
  * Retry delay relative to the execution day of the failed attempt:
@@ -88,9 +89,14 @@ export async function executeBaselinePolicy({ runId, mandate, currentDay, seed }
   }
 
   // Step 3: Run payment simulator (NEVER pass currentDay or experiment_arm)
+  const simMandateId =
+    mandate.mandate_id && /^M-\d+$/.test(mandate.mandate_id)
+      ? mandate.mandate_id
+      : (mandate.id || mandate.mandate_id);
+
   const simResult = simulatePayment({
     seed,
-    mandateId: mandate.id,
+    mandateId: simMandateId,
     attemptNumber: attempt.attempt_number,
     amount: mandate.amount,
     balanceVolatility: mandate.balance_volatility,
@@ -213,6 +219,8 @@ export async function executeBaselinePolicy({ runId, mandate, currentDay, seed }
     }
 
     const nextActionDay = currentDay + delay;
+
+    assertMandateAction(updatedMandate.status, 'retry');
 
     const { error: retryErr } = await supabase.rpc('set_mandate_action', {
       p_run_id: runId,

@@ -288,6 +288,8 @@ export async function proposeSmartRecoveryAction({
   category,
   retryEligible,
   declineCode = null,
+  benchmark = false,
+  deterministic = false,
 } = {}) {
   // ── Input validation ──────────────────────────────────────────────────────
 
@@ -326,19 +328,31 @@ export async function proposeSmartRecoveryAction({
     declineCode,
   };
 
-  // ── Attempt AI proposal ───────────────────────────────────────────────────
+  // ── Proposal resolution ───────────────────────────────────────────────────
+  // Benchmark mode uses the deterministic heuristic fallback path directly for
+  // reproducible synthetic benchmarks. Non-benchmark execution invokes live Gemini AI.
+
+  const isBenchmark = Boolean(
+    benchmark || deterministic || process.env.BENCHMARK_MODE === 'true'
+  );
 
   let rawProposal;
-  let source = 'ai';
+  let source;
 
-  try {
-    const prompt = buildPrompt(context);
-    const aiResult = await callGeminiAPI(prompt);
-    rawProposal = { ...aiResult, source: 'ai' };
-  } catch {
-    // API unavailable, timed out, or returned unusable response → fall back
+  if (isBenchmark) {
     source = 'fallback';
     rawProposal = heuristicFallback({ category, retryEligible, attemptsUsed });
+  } else {
+    source = 'ai';
+    try {
+      const prompt = buildPrompt(context);
+      const aiResult = await callGeminiAPI(prompt);
+      rawProposal = { ...aiResult, source: 'ai' };
+    } catch {
+      // API unavailable, timed out, or returned unusable response → fall back
+      source = 'fallback';
+      rawProposal = heuristicFallback({ category, retryEligible, attemptsUsed });
+    }
   }
 
   // ── Apply safety guardrails ───────────────────────────────────────────────

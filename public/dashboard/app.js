@@ -16,6 +16,7 @@ const S = {
   lastSeed: null,
   lastMandates: null,
   lastMaxDays: null,
+  mandateIds: [],
 };
 
 // ══════════════════════════════════════════════════════════
@@ -23,7 +24,7 @@ const S = {
 // ══════════════════════════════════════════════════════════
 function initTheme() {
   // Clear any persistent dark mode from previous sessions so default is strictly LIGHT
-  try { localStorage.removeItem('sl-theme'); } catch (_) {}
+  try { localStorage.removeItem('sl-theme'); } catch (_) { }
   const saved = sessionStorage.getItem('sl-theme');
   const theme = saved === 'dark' ? 'dark' : 'light';
   document.documentElement.setAttribute('data-theme', theme);
@@ -250,13 +251,22 @@ async function createSimulation() {
 
     // Save state
     S.runId = result.runId;
+    S.mandateIds = Array.isArray(result.mandateIds) ? result.mandateIds : [];
     S.hasRun = false;
     S.lastSeed = seed;
     S.lastMandates = mandateCount;
     S.lastMaxDays = maxDays;
 
-    // Display actual returned Run ID
+    // Display actual returned Run ID and populate mandate options
     $('run-id-display').textContent = result.runId;
+    await refreshEligibleMandates();
+    populateTraceMandateSelect(S.mandateIds);
+    hide('trace-details');
+    show('trace-empty-state');
+    hideAlert('trace-alert');
+    if ($('trace-mandate-input')) $('trace-mandate-input').value = '';
+    hideAlert('manual-order-alert');
+    fetchPendingApprovals();
     updateRunStatusUI({ currentDay: 0, maxDays, status: 'created' }, null);
     hide('run-empty');
     show('run-info');
@@ -296,7 +306,7 @@ async function runSimulation() {
 
   try {
     // Run all-arm recovery
-    const runResult = await apiPost('/api/simulations/' + S.runId + '/run', {});
+    const runResult = await apiPost('/api/simulations/' + S.runId + '/run', { deterministic: true });
     S.hasRun = true;
 
     // Fetch fresh run state
@@ -327,6 +337,11 @@ async function runSimulation() {
       const label = 'seed ' + S.lastSeed + ' · ' + (S.lastMandates ?? '?') + ' mandates · ' + (S.lastMaxDays ?? '?') + ' virtual days';
       setText('result-seed-label', label);
     }
+
+    // Refresh oversight panels
+    fetchPendingApprovals();
+    fetchRecentWebhooks();
+    refreshEligibleMandates();
 
     hideAlert('run-alert');
   } catch (err) {
@@ -647,7 +662,7 @@ function resetArchAnimation() {
   archTimers.forEach(t => clearTimeout(t));
   archTimers = [];
 
-  const layers = ['arch-layer-1', 'arch-layer-2', 'arch-layer-3', 'arch-layer-4'];
+  const layers = ['arch-layer-1', 'arch-layer-2', 'arch-layer-3', 'arch-layer-4', 'arch-layer-5', 'arch-layer-razorpay'];
   layers.forEach(id => {
     const el = $(id);
     if (el) el.classList.remove('revealed');
@@ -656,7 +671,8 @@ function resetArchAnimation() {
   const pulseSelectors = [
     '#conn-1 .conn-pulse',
     '#conn-2 .branch-pulse-dot',
-    '#conn-3 .converge-pulse-dot'
+    '#conn-3 .converge-pulse-dot',
+    '#conn-4 .conn-pulse'
   ];
   pulseSelectors.forEach(sel => {
     document.querySelectorAll(sel).forEach(el => el.classList.remove('animating'));
@@ -672,7 +688,7 @@ function playArchAnimation() {
 
   // Respect prefers-reduced-motion
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    ['arch-layer-1', 'arch-layer-2', 'arch-layer-3', 'arch-layer-4'].forEach(id => {
+    ['arch-layer-1', 'arch-layer-2', 'arch-layer-3', 'arch-layer-4', 'arch-layer-5', 'arch-layer-razorpay'].forEach(id => {
       const el = $(id);
       if (el) el.classList.add('revealed');
     });
@@ -713,6 +729,23 @@ function playArchAnimation() {
     const l4 = $('arch-layer-4');
     if (l4) l4.classList.add('revealed');
   }, 2050));
+
+  // 5. Pulse conn-4 (connecting to Oversight & Observability), then reveal Layer 5
+  archTimers.push(setTimeout(() => {
+    const p4 = document.querySelector('#conn-4 .conn-pulse');
+    if (p4) p4.classList.add('animating');
+  }, 2350));
+
+  archTimers.push(setTimeout(() => {
+    const l5 = $('arch-layer-5');
+    if (l5) l5.classList.add('revealed');
+  }, 2650));
+
+  // 6. Reveal isolated Real Razorpay Test Mode Runtime
+  archTimers.push(setTimeout(() => {
+    const lRzp = $('arch-layer-razorpay');
+    if (lRzp) lRzp.classList.add('revealed');
+  }, 3000));
 }
 
 function initArchAnimation() {
@@ -814,7 +847,7 @@ function playScenarioAnimation() {
   // Helper for static final recovered state
   const setFinalRecoveredState = () => {
     if (statusPulse) statusPulse.className = 'hero-status-pulse resolved';
-    if (statusTitle) statusTitle.textContent = 'PAYMENT RECOVERED • SETTLEMENT COMPLETE';
+    if (statusTitle) statusTitle.textContent = 'SIMULATION • RECOVERY COMPLETE';
     if (laptopPing) laptopPing.className = 'laptop-ping-anchor resolved';
     if (txChip) txChip.className = 'tx-chip state-recovered';
     if (txChipTag) txChipTag.textContent = 'RECOVERED';
@@ -826,7 +859,7 @@ function playScenarioAnimation() {
       txStatusPill.textContent = 'RECOVERED';
     }
     if (txStatusDetail) {
-      txStatusDetail.textContent = 'Mandate successfully recovered • ₹8,499 settled';
+      txStatusDetail.textContent = 'Mandate successfully recovered • ₹8,499 simulated recovery';
     }
     if (actionStatus) actionStatus.textContent = 'Recovered on D+1';
     if (frictionStatus) frictionStatus.textContent = '100% Friction-Free';
@@ -900,6 +933,531 @@ function initHeroScenarioAnimation() {
 }
 
 // ══════════════════════════════════════════════════════════
+// MANUAL RAZORPAY TEST MODE ORDER (Operator Action)
+// ══════════════════════════════════════════════════════════
+
+/**
+ * Refreshes the Manual Razorpay Order mandate selector from current database state.
+ * Ensures ONLY currently eligible Smart mandates are displayed:
+ * - belongs to current simulation run
+ * - experiment_arm = 'smart'
+ * - next_action = 'retry'
+ * - attempts_used < 4
+ * - amount > 0
+ */
+async function refreshEligibleMandates() {
+  const sel = $('manual-order-mandate-select');
+  if (!sel) return;
+
+  if (!S.runId) {
+    sel.innerHTML = '<option value="" disabled selected>No eligible Smart mandate available</option>';
+    return;
+  }
+
+  try {
+    const res = await apiGet('/api/simulations/' + encodeURIComponent(S.runId) + '/eligible-mandates');
+    const list = res.mandates || [];
+
+    if (!Array.isArray(list) || list.length === 0) {
+      sel.innerHTML = '<option value="" disabled selected>No eligible Smart mandate available</option>';
+      const input = $('manual-order-mandate-id');
+      if (input && sel.value === '') input.value = '';
+      return;
+    }
+
+    sel.innerHTML = '<option value="">— Select an eligible Smart mandate —</option>';
+    list.forEach((m, idx) => {
+      const opt = document.createElement('option');
+      const id = typeof m === 'string' ? m : m.id;
+      const label = (m.mandate_id || ('Mandate #' + (idx + 1))) + ' (' + id.slice(0, 8) + '…)';
+      opt.value = id;
+      opt.textContent = label;
+      sel.appendChild(opt);
+    });
+  } catch (err) {
+    sel.innerHTML = '<option value="" disabled selected>No eligible Smart mandate available</option>';
+  }
+}
+
+/**
+ * Executes a manual Razorpay Test Mode order creation request.
+ *
+ * Rules:
+ * - Requires explicit manual operator click.
+ * - Discloses that this creates a real Test Mode order artifact and is NOT a payment retry.
+ * - Never called automatically by simulation runner.
+ * - Calls existing POST /api/v1/razorpay/orders (no second backend route).
+ */
+async function createManualRazorpayOrder() {
+  const selectVal = $('manual-order-mandate-select')?.value?.trim();
+  const inputVal = $('manual-order-mandate-id')?.value?.trim();
+  const mandateId = inputVal || selectVal;
+
+  if (!mandateId) {
+    return showAlert('manual-order-alert', 'error', 'Please select or enter a valid Mandate ID.');
+  }
+
+  const btn = $('btn-manual-order');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<div class="spinner"></div> Creating Test Mode Order&hellip;';
+  }
+
+  showAlert('manual-order-alert', 'loading',
+    '<div class="spinner"></div>&nbsp; Calling Razorpay Test Mode Orders API directly&hellip;');
+
+  try {
+    const res = await fetch('/api/v1/razorpay/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mandateId, currency: 'INR' }),
+    });
+
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok) {
+      const errMsg = data.error || ('HTTP ' + res.status);
+      const disc = data.disclosure ? '<div class="alert-disclosure">' + esc(data.disclosure) + '</div>' : '';
+      showAlert('manual-order-alert', 'error',
+        '<strong>Backend Validation Error:</strong> ' + esc(errMsg) + disc);
+      return;
+    }
+
+    const order = data.razorpay_order || {};
+    const disc = data.disclosure ? '<div class="alert-disclosure">' + esc(data.disclosure) + '</div>' : '';
+    const amtRupees = order.amount ? (order.amount / 100).toFixed(2) : '—';
+
+    showAlert('manual-order-alert', 'success',
+      '<div class="order-success-title">' +
+      '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>' +
+      '<span>Real Razorpay Test Mode Order Created</span>' +
+      '</div>' +
+      '<div class="order-success-meta">' +
+      '<div><strong>Order ID:</strong> <code class="order-id-code">' + esc(order.id || '—') + '</code></div>' +
+      '<div><strong>Amount:</strong> ₹' + esc(amtRupees) + ' (' + esc(order.currency || 'INR') + ')</div>' +
+      '<div><strong>Status:</strong> <span class="order-status-pill">' + esc(order.status || 'created') + '</span></div>' +
+      '<div><strong>Mandate Arm:</strong> ' + esc(data.mandate?.experiment_arm || 'smart') + '</div>' +
+      '</div>' +
+      disc);
+  } catch (err) {
+    showAlert('manual-order-alert', 'error',
+      '<strong>Request Failed:</strong> ' + esc(err.message));
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML =
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">' +
+        '<rect x="2" y="5" width="20" height="14" rx="2" />' +
+        '<line x1="2" y1="10" x2="22" y2="10" />' +
+        '</svg>' +
+        ' Create Real Razorpay Test Mode Order';
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+// OPERATOR OVERSIGHT & GOVERNANCE (PHASE 6)
+// ══════════════════════════════════════════════════════════
+
+// ── 1. Decision Trace ──────────────────────────────────────
+function populateTraceMandateSelect(mandateIds) {
+  const sel = $('trace-mandate-select');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">— Select a mandate —</option>';
+  if (!Array.isArray(mandateIds) || mandateIds.length === 0) return;
+
+  mandateIds.forEach((id, idx) => {
+    const opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = 'Mandate #' + (idx + 1) + ' (' + id.slice(0, 8) + '…)';
+    sel.appendChild(opt);
+  });
+}
+
+async function loadMandateTrace(mandateId) {
+  const id = (mandateId || $('trace-mandate-input')?.value || $('trace-mandate-select')?.value)?.trim();
+  if (!id) {
+    return showAlert('trace-alert', 'error', 'Please select or enter a valid Mandate ID.');
+  }
+
+  hideAlert('trace-alert');
+  const btn = $('btn-load-trace');
+  if (btn) btn.disabled = true;
+
+  try {
+    const data = await apiGet('/api/mandates/' + encodeURIComponent(id) + '/trace');
+
+    setText('tr-arm', data.arm ? data.arm.toUpperCase() : '—');
+    setText('tr-status', data.status || '—');
+    setText('tr-category', data.failureCategory && data.failureCategory !== 'none' ? data.failureCategory : 'None');
+    setText('tr-confidence', (data.confidence !== null && data.confidence !== undefined) ? (Number(data.confidence) * 100).toFixed(0) + '%' : 'N/A');
+
+    if (data.aiProposal) {
+      const p = data.aiProposal;
+      const delayTxt = p.retryDelayDays !== null && p.retryDelayDays !== undefined ? ` (delay: ${p.retryDelayDays} days)` : '';
+      const reasonTxt = p.reasoning ? ` — ${p.reasoning}` : '';
+      setText('tr-ai-proposal', `${p.action}${delayTxt}${reasonTxt}`);
+    } else {
+      setText('tr-ai-proposal', 'No AI proposal — direct deterministic policy');
+    }
+
+    if (data.guardrailResult) {
+      const gr = data.guardrailResult;
+      const allowedStr = gr.allowed ? '✓ ALLOWED' : '✗ BLOCKED';
+      const reasonsStr = Array.isArray(gr.reasons) && gr.reasons.length > 0 ? ': ' + gr.reasons.join('; ') : '';
+      setText('tr-guardrail', `${allowedStr}${reasonsStr}`);
+    } else {
+      setText('tr-guardrail', 'Not recorded');
+    }
+
+    setText('tr-final-action', data.finalAction || '—');
+    setText('tr-retry-day', (data.status === 'pending' && data.retryDay !== null && data.retryDay !== undefined) ? `Day ${data.retryDay}` : 'N/A');
+
+    if (data.humanApproval) {
+      const ha = data.humanApproval;
+      setText('tr-approval-state', `Status: ${ha.status} (ID: ${ha.id.slice(0, 8)}… expires Day ${ha.expiresDay ?? '?'})`);
+    } else {
+      setText('tr-approval-state', 'Not required');
+    }
+
+    show('trace-details');
+    hide('trace-empty-state');
+    // Show the Replay Decision button; store current mandate ID for replay
+    show('replay-launch-row');
+    hide('replay-container');
+    const tl = $('replay-timeline');
+    if (tl) tl.innerHTML = '';
+    // Tag the replay button with the mandate we just traced
+    const rBtn = $('btn-replay-decision');
+    if (rBtn) rBtn.dataset.mandateId = id;
+  } catch (err) {
+    showAlert('trace-alert', 'error', 'Failed to load mandate trace: ' + esc(err.message));
+    hide('trace-details');
+    show('trace-empty-state');
+    hide('replay-launch-row');
+    hide('replay-container');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ── 1b. Decision Replay ────────────────────────────────────────────────────
+
+// Map eventType → { icon emoji, icon CSS class, human label }
+const REPLAY_EVENT_META = {
+  initial_state: { icon: '⬤', cls: 'replay-icon-initial', label: 'Initial State' },
+  attempt: { icon: '⚡', cls: 'replay-icon-attempt', label: 'Payment Attempt' },
+  ai_proposal: { icon: '🤖', cls: 'replay-icon-ai', label: 'Recovery Proposal' },
+  guardrail_evaluation: { icon: '🛡', cls: 'replay-icon-guard', label: 'Guardrail Evaluation' },
+  approval_event: { icon: '👤', cls: 'replay-icon-approval', label: 'Human Approval' },
+  state_transition: { icon: '🏁', cls: 'replay-icon-terminal', label: 'State Transition' },
+};
+
+/** Build one replay-event DOM element for a timeline entry. */
+function buildReplayEventEl(event) {
+  const meta = REPLAY_EVENT_META[event.eventType] || { icon: '·', cls: '', label: event.eventType };
+  const d = event.data || {};
+
+  const el = document.createElement('div');
+  el.className = 'replay-event';
+  el.setAttribute('data-event-type', event.eventType);
+
+  const dayStr = (event.day !== null && event.day !== undefined) ? `Day ${event.day}` : '';
+
+  let fieldsHtml = '';
+
+  switch (event.eventType) {
+    case 'initial_state':
+      fieldsHtml += field('Arm', esc(d.arm ? d.arm.toUpperCase() : '—'));
+      fieldsHtml += field('First Due', (d.firstDueDay !== null && d.firstDueDay !== undefined) ? `Day ${d.firstDueDay}` : '—');
+      fieldsHtml += field('Initial Status', esc(d.status || 'pending'));
+      break;
+
+    case 'attempt': {
+      const outcomeClass = d.outcome === 'success' ? 'replay-outcome-success' : 'replay-outcome-failure';
+      fieldsHtml += field('Attempt #', esc(String(d.attemptNumber ?? '—')));
+      fieldsHtml += field('Outcome', `<span class="${outcomeClass}">${esc(d.outcome || '—')}</span>`);
+      if (d.declineCategory) fieldsHtml += field('Category', esc(d.declineCategory));
+      if (d.declineCode) fieldsHtml += field('Code', esc(d.declineCode));
+      if (d.retryEligible !== null && d.retryEligible !== undefined) {
+        fieldsHtml += field('Retry Eligible', esc(d.retryEligible ? 'Yes' : 'No'));
+      }
+      break;
+    }
+
+    case 'ai_proposal': {
+      const src = d.source || 'unknown';
+      fieldsHtml += field('Action', esc(d.action || '—'));
+      fieldsHtml += field('Source', esc(src === 'fallback' ? 'Fallback heuristic' : src === 'ai' ? 'Gemini AI' : src));
+      if (d.retryDelayDays !== null && d.retryDelayDays !== undefined) {
+        fieldsHtml += field('Retry Delay', `${esc(String(d.retryDelayDays))} days`);
+      }
+      if (d.reasoning) fieldsHtml += field('Reasoning', esc(d.reasoning));
+      // Rule 4 transparency — always shown when an ai_proposal event exists
+      fieldsHtml += `<div class="replay-note-box">
+        <div class="replay-note-label">Rule 4 — Confidence Guardrail</div>
+        <div>${esc(d.confidenceNote || 'NON-TRIGGERING UNDER CURRENT CONFIGURATION — confidence is deterministically assigned 0.80; Gemini currently does not provide a confidence signal.')}</div>
+      </div>`;
+      break;
+    }
+
+    case 'guardrail_evaluation': {
+      const resultCls = d.result === 'PASSED' ? 'replay-result-passed' : 'replay-result-blocked';
+      fieldsHtml += field('Result', `<span class="${resultCls}">${esc(d.result || '—')}</span>`);
+      if (Array.isArray(d.reasons) && d.reasons.length > 0) {
+        fieldsHtml += field('Reasons', esc(d.reasons.join('; ')));
+      } else if (d.reasoning) {
+        fieldsHtml += field('Reasoning', esc(d.reasoning));
+      } else {
+        fieldsHtml += field('Details', 'Not recorded');
+      }
+      break;
+    }
+
+    case 'approval_event':
+      fieldsHtml += field('Status', esc(d.status || '—'));
+      if (d.expiresDay !== null && d.expiresDay !== undefined) fieldsHtml += field('Expires', `Day ${esc(String(d.expiresDay))}`);
+      if (d.decidedBy) fieldsHtml += field('Decided By', esc(d.decidedBy));
+      if (d.decisionReason) fieldsHtml += field('Reason', esc(d.decisionReason));
+      break;
+
+    case 'state_transition':
+      fieldsHtml += field('Status', esc(d.status || '—'));
+      if (d.status === 'recovered') {
+        fieldsHtml += field('Outcome', 'Mandate recovered via successful payment');
+      } else if (d.status === 'stood_down' || d.status === 'exhausted') {
+        fieldsHtml += field('Terminal Reason', esc(d.terminalReason || 'Not recorded'));
+        if (d.nextAction && d.nextAction !== 'none') fieldsHtml += field('Terminal Action', esc(d.nextAction));
+      } else if (d.status === 'pending') {
+        if (d.nextAction) fieldsHtml += field('Next Action', esc(d.nextAction));
+        if (d.nextActionDay !== null && d.nextActionDay !== undefined) {
+          fieldsHtml += field('Scheduled Day', `Day ${esc(String(d.nextActionDay))}`);
+        }
+      }
+      fieldsHtml += field('Lifecycle', d.isFinal ? 'Terminal — lifecycle complete' : 'In Progress — pending further evaluation');
+      break;
+
+    default:
+      fieldsHtml += field('Data', esc(JSON.stringify(d)));
+  }
+
+  el.innerHTML = `
+    <div class="replay-event-icon ${meta.cls}" title="${esc(meta.label)}" aria-hidden="true">${meta.icon}</div>
+    <div class="replay-event-body">
+      <div class="replay-event-header">
+        <span class="replay-event-type">${esc(meta.label)}</span>
+        ${dayStr ? `<span class="replay-event-day">${esc(dayStr)}</span>` : ''}
+      </div>
+      <div class="replay-event-card">${fieldsHtml}</div>
+    </div>`;
+
+  return el;
+}
+
+/** Render a single key-value field row. value may contain safe HTML. */
+function field(label, valueHtml) {
+  return `<div class="replay-field">
+    <span class="replay-field-label">${esc(label)}</span>
+    <span class="replay-field-value">${valueHtml}</span>
+  </div>`;
+}
+
+/** Fetch replay data and render the timeline for the given mandateId. */
+async function replayDecision(mandateId) {
+  const container = $('replay-container');
+  const timeline = $('replay-timeline');
+  const alertEl = $('replay-alert');
+  const btn = $('btn-replay-decision');
+
+  if (!container || !timeline) return;
+
+  // Clear previous state
+  if (alertEl) { alertEl.className = 'alert hidden'; alertEl.textContent = ''; }
+  timeline.innerHTML = '';
+  if (btn) btn.disabled = true;
+
+  show('replay-container');
+
+  try {
+    const data = await apiGet('/api/mandates/' + encodeURIComponent(mandateId) + '/replay');
+
+    // Keep header in sync with authoritative replay response
+    if (data.arm) setText('tr-arm', data.arm.toUpperCase());
+    if (data.status) setText('tr-status', data.status);
+    if (data.failureCategory) {
+      setText('tr-category', data.failureCategory !== 'none' ? data.failureCategory : 'None');
+    }
+    if (data.confidence !== undefined) {
+      setText('tr-confidence', data.confidence || 'N/A');
+    }
+    if (data.aiProposal) {
+      const p = data.aiProposal;
+      const delayTxt = p.retryDelayDays !== null && p.retryDelayDays !== undefined ? ` (delay: ${p.retryDelayDays} days)` : '';
+      const reasonTxt = p.reasoning ? ` — ${p.reasoning}` : '';
+      setText('tr-ai-proposal', `${p.action}${delayTxt}${reasonTxt}`);
+    } else {
+      setText('tr-ai-proposal', 'No AI proposal — direct deterministic policy');
+    }
+    if (data.guardrailResult) {
+      const gr = data.guardrailResult;
+      const allowedStr = gr.allowed ? '✓ ALLOWED' : '✗ BLOCKED';
+      const reasonsStr = Array.isArray(gr.reasons) && gr.reasons.length > 0 ? ': ' + gr.reasons.join('; ') : '';
+      setText('tr-guardrail', `${allowedStr}${reasonsStr}`);
+    } else {
+      setText('tr-guardrail', 'Not recorded');
+    }
+    if (data.finalAction !== undefined) setText('tr-final-action', data.finalAction || '—');
+    setText('tr-retry-day', (data.status === 'pending' && data.retryDay !== null && data.retryDay !== undefined) ? `Day ${data.retryDay}` : 'N/A');
+    if (data.humanApproval) {
+      const ha = data.humanApproval;
+      setText('tr-approval-state', `Status: ${ha.status} (ID: ${ha.id.slice(0, 8)}… expires Day ${ha.expiresDay ?? '?'})`);
+    } else {
+      setText('tr-approval-state', 'Not required');
+    }
+
+    if (!data.timeline || data.timeline.length === 0) {
+      if (alertEl) {
+        alertEl.className = 'alert alert-error';
+        alertEl.textContent = 'No timeline data available for this mandate.';
+        show(alertEl);
+      }
+      return;
+    }
+
+    for (const event of data.timeline) {
+      timeline.appendChild(buildReplayEventEl(event));
+    }
+  } catch (err) {
+    if (alertEl) {
+      alertEl.className = 'alert alert-error';
+      alertEl.textContent = 'Failed to load replay: ' + esc(err.message || String(err));
+      show(alertEl);
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function fetchPendingApprovals() {
+  hideAlert('approvals-alert');
+  const feed = $('approvals-feed');
+  if (!feed) return;
+
+  try {
+    const url = S.runId ? `/api/approvals?runId=${encodeURIComponent(S.runId)}` : '/api/approvals';
+    const res = await apiGet(url);
+    const list = res.approvals || [];
+
+    if (list.length === 0) {
+      feed.innerHTML = '<div class="oversight-empty" id="approvals-empty-box"><span>No pending approvals found for this simulation.</span></div>';
+      hide('manual-approval-form');
+      if ($('input-approval-id')) $('input-approval-id').value = '';
+      return;
+    }
+
+    // When there are real pending approvals, show the form and populate with a real pending approval ID
+    show('manual-approval-form');
+    if ($('input-approval-id')) {
+      const currentVal = $('input-approval-id').value?.trim();
+      const stillExists = list.some(app => app.id === currentVal);
+      $('input-approval-id').value = stillExists ? currentVal : list[0].id;
+    }
+
+    feed.innerHTML = list.map(app => {
+      const p = app.proposed_action || {};
+      const actionTxt = p.action ? `${p.action} (Day ${p.day || p.delayDays || '?'})` : 'Review';
+      const confTxt = p.confidence ? ` · Confidence: ${(p.confidence * 100).toFixed(0)}%` : '';
+      return `
+        <div class="approval-card-item" id="app-card-${esc(app.id)}" style="cursor:pointer;" onclick="if(window.selectApproval)window.selectApproval('${esc(app.id)}')">
+          <div class="approval-item-meta">
+            <span class="approval-item-id">ID: ${esc(app.id)}</span>
+            <span class="approval-item-sub">Mandate: ${esc((app.mandate_id || '').slice(0, 8))}… · Proposed: <strong>${esc(actionTxt)}</strong>${esc(confTxt)} · Expires: Day ${esc(app.expires_day ?? '?')}</span>
+          </div>
+          <div class="approval-item-btns">
+            <button class="btn btn-sm btn-action-approve" onclick="event.stopPropagation();resolveApproval('${esc(app.id)}', 'approved', ${app.created_day || 0})">Approve</button>
+            <button class="btn btn-sm btn-action-reject" onclick="event.stopPropagation();resolveApproval('${esc(app.id)}', 'rejected', ${app.created_day || 0})">Reject</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    showAlert('approvals-alert', 'error', 'Failed to fetch pending approvals: ' + esc(err.message));
+    hide('manual-approval-form');
+    if ($('input-approval-id')) $('input-approval-id').value = '';
+  }
+}
+
+window.selectApproval = function (id) {
+  const input = $('input-approval-id');
+  if (input && id) input.value = id;
+};
+
+window.resolveApproval = async function (approvalId, decision, decidedDay, decisionReason) {
+  const id = approvalId?.trim();
+  if (!id) {
+    return showAlert('approvals-alert', 'error', 'Approval Request ID is required.');
+  }
+
+  hideAlert('approvals-alert');
+  showAlert('approvals-alert', 'loading', '<div class="spinner"></div> Resolving approval via POST /api/approvals/:id/resolve...');
+
+  try {
+    const body = {
+      decision: decision || 'approved',
+      decidedBy: 'operator',
+      decidedDay: typeof decidedDay === 'number' ? decidedDay : (S.currentDay || 0),
+      decisionReason: decisionReason || `Operator ${decision} via dashboard oversight console`,
+    };
+
+    const result = await apiPost(`/api/approvals/${encodeURIComponent(id)}/resolve`, body);
+
+    showAlert('approvals-alert', 'success',
+      `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>&nbsp; Approval <code>${esc(result.approvalId)}</code> resolved: <strong>${esc(result.decision)}</strong>. Mandate status: <code>${esc(result.mandate?.status || '—')}</code> (action: <code>${esc(result.mandate?.next_action || '—')}</code>).`);
+
+    // Refresh pending approvals feed and eligible mandates
+    await fetchPendingApprovals();
+    await refreshEligibleMandates();
+  } catch (err) {
+    showAlert('approvals-alert', 'error', 'Resolution failed: ' + esc(err.message));
+  }
+};
+
+// ── 3. Webhook Verification Status ─────────────────────────
+async function fetchRecentWebhooks() {
+  hideAlert('webhook-status-alert');
+  const tbody = $('webhook-events-body');
+  if (!tbody) return;
+
+  try {
+    const res = await apiGet('/api/webhooks/recent');
+    const events = res.events || [];
+
+    if (events.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="4" class="td-empty">No recent webhook events found in database.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = events.map(ev => {
+      const verifiedPill = ev.signature_verified
+        ? '<span class="badge-verified"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg> Verified</span>'
+        : '<span class="badge-unverified">Unverified</span>';
+
+      const timeStr = ev.received_at ? new Date(ev.received_at).toISOString().replace('T', ' ').slice(0, 19) : '—';
+      return `
+        <tr>
+          <td><code>${esc(ev.event_type || '—')}</code></td>
+          <td><code style="font-size:11.5px">${esc(ev.event_id || '—')}</code></td>
+          <td>${verifiedPill}</td>
+          <td><span style="color:var(--text-2);font-size:12px">${esc(timeStr)}</span></td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    showAlert('webhook-status-alert', 'error', 'Failed to fetch webhook events: ' + esc(err.message));
+  }
+}
+
+// ══════════════════════════════════════════════════════════
 // INITIALIZATION
 // ══════════════════════════════════════════════════════════
 function init() {
@@ -922,13 +1480,67 @@ function init() {
   show('results-empty');
   hideAlert('setup-alert');
   hideAlert('run-alert');
+  hideAlert('manual-order-alert');
+  hideAlert('trace-alert');
+  hideAlert('approvals-alert');
+  hideAlert('webhook-status-alert');
   resetStrategyMetricsToAwaiting();
   updateExperimentPreview();
+
+  // Load initial oversight data
+  fetchRecentWebhooks();
+  fetchPendingApprovals();
+  refreshEligibleMandates();
 
   // Button handlers
   $('theme-toggle').addEventListener('click', toggleTheme);
   $('btn-create').addEventListener('click', createSimulation);
   $('btn-run').addEventListener('click', runSimulation);
+
+  // Manual Razorpay order handlers
+  $('manual-order-mandate-select')?.addEventListener('change', e => {
+    const input = $('manual-order-mandate-id');
+    if (input) input.value = e.target.value || '';
+  });
+  $('btn-manual-order')?.addEventListener('click', createManualRazorpayOrder);
+
+  // Oversight handlers
+  $('btn-refresh-approvals')?.addEventListener('click', fetchPendingApprovals);
+  $('btn-refresh-webhooks')?.addEventListener('click', fetchRecentWebhooks);
+  $('btn-load-trace')?.addEventListener('click', () => loadMandateTrace());
+  $('trace-mandate-select')?.addEventListener('change', e => {
+    const input = $('trace-mandate-input');
+    if (input) input.value = e.target.value || '';
+    hide('trace-details');
+    show('trace-empty-state');
+    hideAlert('trace-alert');
+    hide('replay-launch-row');
+    hide('replay-container');
+    const tl = $('replay-timeline');
+    if (tl) tl.innerHTML = '';
+  });
+
+  // Replay Decision button: only fires when user explicitly clicks it
+  $('btn-replay-decision')?.addEventListener('click', () => {
+    const mandateId = $('btn-replay-decision')?.dataset?.mandateId
+      || $('trace-mandate-input')?.value?.trim()
+      || $('trace-mandate-select')?.value?.trim();
+    if (mandateId) replayDecision(mandateId);
+  });
+
+  // Direct approval resolution
+  $('btn-action-approve')?.addEventListener('click', () => {
+    const id = $('input-approval-id')?.value;
+    const by = $('input-decided-by')?.value;
+    const r = $('input-approval-reason')?.value;
+    resolveApproval(id, 'approved', S.currentDay || 0, r);
+  });
+  $('btn-action-reject')?.addEventListener('click', () => {
+    const id = $('input-approval-id')?.value;
+    const by = $('input-decided-by')?.value;
+    const r = $('input-approval-reason')?.value;
+    resolveApproval(id, 'rejected', S.currentDay || 0, r);
+  });
 
   // Input changes for live preview
   $('input-mandates')?.addEventListener('input', updateExperimentPreview);
@@ -945,4 +1557,6 @@ function init() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
+
+
 

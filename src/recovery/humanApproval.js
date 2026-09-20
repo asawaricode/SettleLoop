@@ -412,7 +412,8 @@ export async function expireHumanApprovals({ runId, currentDay }) {
     .select('id, mandate_id, expires_day')
     .eq('run_id', runId)
     .eq('status', 'pending')
-    .lte('expires_day', currentDay);
+    .lte('expires_day', currentDay)
+    .order('id', { ascending: true });
 
   if (qErr) {
     throw new Error(`expireHumanApprovals pre-query failed: ${qErr.message}`);
