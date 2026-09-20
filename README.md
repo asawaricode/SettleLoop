@@ -1,6 +1,6 @@
 # SettleLoop
 
-**AI-powered payment recovery intelligence for failed recurring payments.**
+**Payment recovery evaluation engine comparing Control, Baseline, and Smart recovery policies in a simulation environment, with an isolated Razorpay Test Mode integration.**
 
 Built for the **Razorpay Buildathon**.
 
@@ -21,307 +21,502 @@ Built for the **Razorpay Buildathon**.
   <img src="https://img.shields.io/badge/Deployed_on-Vercel-000000?style=flat-square&logo=vercel&logoColor=white" alt="Vercel" />
 </p>
 
-SettleLoop evaluates how failed recurring payments can be recovered more intelligently by comparing Control, Baseline, and Smart recovery strategies in a safe, simulation-driven environment.
+---
 
-> **Simulation Disclaimer:** All payment attempts in SettleLoop are deterministically simulated using cryptographic hash functions. SettleLoop does not process real money, connect to live banking rails, or initiate live Razorpay transactions.
+## 1. Project Positioning & System Scope
+
+SettleLoop is an experimental research and benchmarking platform designed to study payment recovery policies under controlled conditions. The project is **not** production payment infrastructure, does not connect to live banking rails, and does not process real customer funds.
+
+The codebase consists of **two strictly separated worlds**:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        WORLD A: SYNTHETIC EXPERIMENT                  │
+│                                                                        │
+│  Deterministic PRNG ──► Virtual Clock ──► Payment Simulator            │
+│                              │                                         │
+│                              ▼                                         │
+│            Control  │  Baseline  │  Smart Policy                       │
+│                              │                                         │
+│                              ▼                                         │
+│         Failure Classifier ──► AI / Fallback ──► Guardrails            │
+│                              │                                         │
+│                              ▼                                         │
+│                   PostgreSQL RPC Execution                             │
+│                              │                                         │
+│                              ▼                                         │
+│           Synthetic Experiment Metrics (mandates, attempts)            │
+└────────────────────────────────────────────────────────────────────────┘
+                                 ▲
+                          STRICT ISOLATION
+                    (Verified by Integration Tests)
+                                 ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                   WORLD B: REAL RAZORPAY TEST MODE                     │
+│                                                                        │
+│  Inbound Webhooks (HMAC-SHA256) ──► webhook_events (Idempotent)        │
+│                                                                        │
+│  Operator Dashboard ──► Manual Orders API ──► Real Test Mode Artifact  │
+│                                                                        │
+│  * Note: This creates a real Razorpay Test Mode order artifact.        │
+│    It is not a payment retry and does not execute a payment.           │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### World A: Synthetic Recovery Experiment
+- **Deterministic Workload Generation:** Seeded pseudo-random generation of recurring mandates modeling subscription pricing, billing cycle days, and balance volatility.
+- **Persisted Virtual Clock:** Multi-day recovery cycles advance instantaneously in virtual days (`current_day`) stored in PostgreSQL.
+- **Simulated Payment Outcomes:** Deterministic cryptographic hashing of simulation parameters simulates bank approval, soft declines, and hard declines without network delays.
+- **Comparative Strategy Arms:** Concurrent execution of Control (no retry), Baseline (fixed calendar retry), and Smart (classified retry with safety guardrails) against identical cohorts.
+- **Decision Engine & Guardrails:** Failure classification, recovery action proposals (Gemini 2.0 Flash or deterministic heuristic fallback), and immutable safety guardrail filtering.
+- **Database Enforcement:** State transitions, attempt caps, and idempotency verified atomically via PostgreSQL stored procedures (RPCs).
+- **Synthetic Metrics:** Recovery rates, recovered volume, attempt efficiency, and recovery lift calculated solely from synthetic experiment tables.
+
+### World B: Real Razorpay Test Mode Integration
+- **Real Signed Webhooks:** Ingestion of genuine Razorpay Test Mode webhook deliveries via `POST /api/v1/webhooks/razorpay`.
+- **Raw-Body HMAC Verification:** Constant-time cryptographic signature validation (`timingSafeEqual`) against raw payload bytes before JSON parsing.
+- **Idempotent Ingestion:** Persistent deduplication using a unique index on `event_id` in PostgreSQL (`webhook_events`).
+- **Manual Test Mode Orders:** Operator-triggered creation of real Razorpay Test Mode orders via `POST /api/v1/razorpay/orders` for eligible Smart mandates.
+- **Clear Operational Boundary:** This creates a real Razorpay Test Mode order artifact. It is not a payment retry and does not execute a payment.
+- **Zero Cross-Contamination:** Inbound webhooks and manual Test Mode order creations do not modify mandate states, create attempt rows, or alter simulation metrics.
 
 ---
 
-## The Problem
+## 2. Architecture & Data Flow
 
-Failed recurring payments should not simply be retried blindly. Different failure conditions require different recovery decisions, while unnecessary retries can waste attempts, trigger preventable customer friction, and accelerate involuntary churn.
-
----
-
-## The Solution
-
-SettleLoop benchmarks three distinct recovery strategies against the exact same synthetic workload and failure conditions:
-
-- **Control** $\rightarrow$ No retry after the first failure (unassisted baseline)
-- **Baseline** $\rightarrow$ Fixed calendar schedule ($D \rightarrow D+1 \rightarrow D+3 \rightarrow D+6$)
-- **Smart** $\rightarrow$ Failure Classification $\rightarrow$ AI Proposal $\rightarrow$ Deterministic Guardrails $\rightarrow$ Safe Action / Human Approval
-
-All three strategies operate against the identical synthetic simulation workload. SettleLoop does not claim Smart always performs better; rather, it measures the exact trade-offs between recovery rate, attempt efficiency, and safety compliance.
-
----
-
-## Key Features
-
-| Feature | Implemented Capability |
-|:---|:---|
-| **Synthetic Workload Generator** | Deterministic PRNG generates realistic recurring mandates with varying customer balance volatility, salary dates, and failure distributions. |
-| **Persisted Virtual Clock** | Simulates multi-day recovery cycles instantly without real-world waiting; clock state is stored and stepped in PostgreSQL. |
-| **Three Strategy Arms** | Concurrent evaluation of Control (no retry), Baseline (fixed calendar), and Smart (adaptive recovery) against identical cohorts. |
-| **Failure Classification** | Maps raw payment failure error codes to semantic decline categories (`soft_decline`, `hard_decline`, `unknown`). |
-| **Gemini Decision Engine** | Google Gemini 2.0 Flash (`temperature: 0`) proposes context-aware retry delays and recovery actions with automated deterministic fallback. |
-| **Deterministic Guardrails** | Pure safety rules validate every AI proposal; hard declines are permanently stood down and attempt limits are strictly enforced. |
-| **Human Approval Workflow** | Flagged proposals (low confidence or missing consent) trigger a formal `pending_human_approval` state with bounded virtual-day expiration. |
-| **Atomic PostgreSQL RPCs** | Sensitive state transitions, attempt caps (max 4), and idempotency keys are enforced via database stored procedures. |
-| **Payment Simulator** | Deterministic hash-based payment simulation produces reproducible success/failure outcomes for a given mandate seed and simulation inputs.|
-| **Audit Logging** | Append-only audit table captures every decision, actor, reasoning, inputs, and outputs with zero secret exposure. |
-| **Comprehensive Metrics** | Calculates recovery rates, recovered amounts, attempts per recovery, average recovery days, empirical lift, and safety violations. |
-| **Interactive Dashboard** | Single-page UI with Light/Dark themes, stepper-driven configuration, real-time status indicators, and live metric tables. |
-
----
-
-## Tech Stack
-
-- **Frontend:** Vanilla HTML5, Modern CSS Design System (Custom tokens, glassmorphism, Light/Dark mode), Vanilla JavaScript (ES Modules, zero build step)
-- **Backend:** Node.js (v18+), Express.js (REST API, input validation, client-server separation)
-- **Database & Storage:** Supabase (PostgreSQL 15), PostgreSQL Stored Procedures (Atomic RPCs), Row-Level Security
-- **AI & Reasoning:** Google Gemini 2.0 Flash via REST API (Structured JSON schema output, fallback heuristic engine)
-- **Testing:** Node.js native test runner (`node:test`, `node:assert`)
-- **Deployment:** Vercel (Edge-cached static frontend + Serverless Express API bridge via `api/index.js`)
-
----
-
-## Real Product Screenshots
-
-### Hero
-*Visual product journey highlighting intelligent recovery and customer friction reduction.*
-
-<p align="center">
-  <img src="docs/screenshots/hero.png" alt="SettleLoop Hero Section" width="900" />
-</p>
-
----
-
-### Experiment
-*Strategy comparison strip, configurable simulation parameters, and real-time execution monitor.*
-
-<p align="center">
-  <img src="docs/screenshots/experiment.png" alt="SettleLoop Experiment Configuration" width="900" />
-</p>
-
----
-
-### Results
-*Comprehensive metrics breakdown, empirical Smart recovery lift, and deterministic safety monitor.*
-
-<p align="center">
-  <img src="docs/screenshots/results.png" alt="SettleLoop Simulation Results" width="900" />
-</p>
-
----
-
-## Architecture
+### A. Synthetic Experiment Architecture
 
 ```mermaid
 flowchart TD
-    subgraph InputLayer ["Simulation Initialization"]
-        GEN["Synthetic Data Generator<br/>(Deterministic Seed)"] --> RUNTIME["Simulation Runtime<br/>(Persisted Virtual Clock)"]
-        RUNTIME --> DB[("Supabase PostgreSQL<br/>(simulation_runs, mandates)")]
+    subgraph SimulationInit ["1. Synthetic Cohort Initialization"]
+        GEN["Deterministic Mandate Generator<br/>(PRNG Seed)"] --> RUNTIME["Simulation Clock<br/>(PostgreSQL current_day)"]
+        RUNTIME --> DB_INIT[("Supabase PostgreSQL<br/>mandates, simulation_runs")]
     end
 
-    subgraph DispatchLayer ["Recovery Engine Dispatcher"]
-        DB --> ENGINE{"Recovery Engine<br/>(Arm Dispatcher)"}
-        ENGINE -->|"Arm: Control"| CTRL["Control Policy<br/>(Stand Down on Failure)"]
-        ENGINE -->|"Arm: Baseline"| BASE["Baseline Policy<br/>(Fixed D, D+1, D+3, D+6)"]
-        ENGINE -->|"Arm: Smart"| SMART["Smart Recovery Arm"]
+    subgraph ArmDispatch ["2. Recovery Engine Dispatch"]
+        DB_INIT --> ENGINE{"Recovery Engine<br/>(Arm Dispatcher)"}
+        ENGINE -->|"Control Arm"| CTRL["Control Policy<br/>(No Retry / Stand Down)"]
+        ENGINE -->|"Baseline Arm"| BASE["Baseline Policy<br/>(Fixed Days: D+1, D+3, D+6)"]
+        ENGINE -->|"Smart Arm"| SMART["Smart Recovery Pipeline"]
     end
 
-    subgraph SmartPipeline ["Smart Decisioning & Safety"]
-        SMART --> FC["Failure Classifier<br/>(Soft vs Hard vs Unknown)"]
-        FC --> AI["AI Agent (Gemini 2.0 Flash)<br/>Proposes recovery action & delay"]
-        AI --> GUARD["Deterministic Guardrails<br/>Enforces hard bounds & consent"]
-        GUARD --> DECISION{"Guardrail Outcome"}
-        DECISION -->|"Safe Action"| ACT_RETRY["Schedule Safe Retry"]
-        DECISION -->|"Terminal / Hard Decline"| ACT_SD["Stand Down"]
-        DECISION -->|"Review Escalation / No Consent"| ACT_HUMAN["Escalate to Human Approval"]
+    subgraph SmartDecision ["3. Smart Decisioning Pipeline"]
+        SMART --> FC["Failure Classifier<br/>(soft vs hard vs unknown)"]
+        FC --> AGENT["Smart Agent<br/>(Gemini 2.0 Flash / Fallback)"]
+        AGENT --> GUARD["Deterministic Guardrails<br/>(Max 4 attempts, soft-only, timing)"]
+        GUARD --> G_DECISION{"Guardrail Validation"}
+        G_DECISION -->|"Allowed"| ACT_RETRY["Schedule Future Retry"]
+        G_DECISION -->|"Hard / Unknown"| ACT_SD["Stand Down"]
+        G_DECISION -->|"Uncertain / Escalated"| ACT_APPROVAL["Route to Human Approval"]
     end
 
-    subgraph ExecutionLayer ["PostgreSQL RPC Boundary & State Enforcement"]
-        CTRL --> RPC["PostgreSQL RPC Layer<br/>(execute_attempt, complete_attempt, set_mandate_action)"]
+    subgraph ExecutionLayer ["4. Execution & Metrics Boundary"]
+        CTRL --> RPC["PostgreSQL Stored Procedures<br/>(execute_attempt, complete_attempt,<br/>set_mandate_action, resolve_approval)"]
         BASE --> RPC
         ACT_RETRY --> RPC
         ACT_SD --> RPC
-        ACT_HUMAN --> RPC
+        ACT_APPROVAL --> RPC
         
-        RPC <--> SIM["Payment Simulator<br/>(Hash of seed + mandate + attempt)"]
-        RPC --> OUT_AUDIT["Audit Logs<br/>(audit_logs)"]
-        RPC --> OUT_METRICS["Evaluation Metrics<br/>(simulation_runs, attempts)"]
+        RPC <--> SIM["Deterministic Payment Simulator<br/>(SHA-256 Hash of Mandate + Attempt)"]
+        RPC --> DB_OUT[("State Persistence<br/>attempts, mandates")]
+        DB_OUT --> METRICS["Metrics Evaluator<br/>(Calculated strictly from mandates & attempts)"]
+        RPC --> AUDIT["Append-Only Audit Trail<br/>(audit_logs)"]
     end
 ```
 
-<p align="center">
-  <strong>AI proposes. Guardrails validate. PostgreSQL RPCs enforce.</strong>
-</p>
+### B. Real Razorpay Test Mode Data Flow
 
-### Architecture in Brief
+```mermaid
+flowchart LR
+    subgraph RazorpayInbound ["Inbound Webhook Pipeline"]
+        RP_WH["Razorpay Test Mode<br/>Webhook Event"] --> WH_RAW["Raw Request Buffer<br/>(express.raw)"]
+        WH_RAW --> HMAC["HMAC-SHA256 Verification<br/>(crypto.timingSafeEqual)"]
+        HMAC --> IDEMP{"Unique event_id<br/>Check"}
+        IDEMP -->|"New Event"| DB_WH[("webhook_events Table<br/>(Stored with payload)")]
+        IDEMP -->|"Duplicate"| RET_DUP["HTTP 200 (duplicate: true)"]
+    end
 
-1. **Strict Arm Isolation:** Control and Baseline never interact with the Failure Classifier, Gemini AI, or Guardrails. They execute purely deterministic rule sets.
-2. **AI Separated from Execution:** The Gemini AI agent proposes structured actions (`retry`, `retryDelayDays`, `reasoning`). It has zero direct execution permissions, database write access, or API key exposure.
-3. **Deterministic Guardrail Filter:** Guardrails sit between AI output and state changes, enforcing immutable rules (e.g. hard declines always stand down; attempt caps $\le 4$).
-4. **PostgreSQL RPC Boundary:** Sensitive attempt creation, status transitions, and idempotency checks are enforced exclusively inside atomic database stored procedures.
-5. **Traceable Simulation:** Attempts are resolved through deterministic cryptographic hashes and recorded alongside full audit logs in PostgreSQL.
-
----
-
-## Recovery Strategies
-
-| Strategy | Decision Policy | Purpose | Retries Allowed |
-|:---|:---|:---|:---:|
-| **Control** | No retry after first failure | Establishes natural unassisted recovery baseline | 0 |
-| **Baseline** | Fixed calendar schedule ($D \rightarrow D+1 \rightarrow D+3 \rightarrow D+6$) | Represents current standard industry retry benchmark | UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries) |
-| **Smart** | Classify $\rightarrow$ AI proposal $\rightarrow$ Guardrails $\rightarrow$ Safe action / Human review | Adapts timing and actions to failure category and customer context | UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries) |
-
-### Why Comparison Arms Matter
-
-Without Control and Baseline, recovery performance cannot be objectively evaluated. Control answers what happens if no action is taken. Baseline demonstrates what happens with conventional calendar retries. Smart must prove its value over Baseline in recovery lift, attempt efficiency, and customer friction reduction under identical conditions.
-
----
-
-## Smart Decisioning & Safety
-
-```
-Payment Failure ──► Failure Classifier ──► AI Proposal ──► Deterministic Guardrails ──► Safe Action / Human Approval
+    subgraph ManualOrderPipeline ["Operator Manual Order Pipeline"]
+        DASH["Operator Dashboard"] --> ORD_REQ["POST /api/v1/razorpay/orders"]
+        ORD_REQ --> PREFLIGHT{"Preflight Checks<br/>(Smart arm? retry action?<br/>attempts < 4? amount > 0?)"}
+        PREFLIGHT -->|"Pass"| RP_API["Razorpay Orders REST API<br/>(POST https://api.razorpay.com/v1/orders)"]
+        RP_API --> LOG_ORD[("audit_logs Entry<br/>(metadata: order_id, disclosure)")]
+    end
 ```
 
-- **AI is Decision Support, Not Execution:** The AI model produces advisory proposals. It cannot call banking APIs or directly mutate database records.
-- **Guardrails Enforce Hard Boundaries:** Guardrails validate every proposal against deterministic safety rules:
-  - Any hard decline or unknown failure reason is forced to `stand_down` (zero automated retries).
-  - UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries) — attempt counts $\ge 4$ trigger mandatory stand-down.
-  - Proposals with confidence $< 0.70$ (or payment links without contact consent) escalate to `human_review`. *(Decision confidence: the current recovery policy assigns a deterministic 0.80 confidence value because Gemini currently returns action, retryDelayDays, and reasoning but no confidence field; the 0.70 guardrail serves as a defensive boundary rather than an active model signal).*
-- **Human Approval is an Escalation State:** When escalated, the mandate transitions to `pending_human_approval` with an expiration window. It never directly executes a payment attempt.
-- **Tamper-Evident Audit Logging:** Every decision, including actor, rule triggers, inputs, outputs, and reasoning, is written to the append-only `audit_logs` table.
+### C. Dashboard Observability Flow
 
----
-
-## Simulation & Virtual Clock
-
-A real recurring payment recovery cycle takes between 3 to 7 days. Waiting days in real time makes iterative experimentation impossible. SettleLoop resolves this through a **persisted virtual clock** (`simulation_runs.current_day`):
-
-- **Event-Driven Advancement:** The recovery engine processes mandates due on day $D$, schedules future retries for day $D+k$, and advances the clock directly to the next scheduled action day.
-- **Synthetic Mandates:** Generated deterministically from a configurable random seed, modeling customer attributes such as balance volatility, salary dates, and subscription amounts.
-- **Deterministic Outcomes:** Payment results (success or specific decline reason) are computed via deterministic hashing of the seed, mandate ID, and attempt number.
-- **Persisted State:** Simulation state is stored in Supabase, allowing any run to be inspected, replayed, and audited.
-
-> **Note on AI Determinism:** While synthetic data generation, the payment simulator, and guardrails are 100% deterministic, responses from the Gemini API may exhibit slight natural variance. Fallback heuristics provide a deterministic backup when required.
-
----
-
-## Data & Backend
-
-### Core Tables
-
-- **`simulation_runs`** — Run configuration, random seed, current virtual day, max days, and execution status (`running`, `completed`).
-- **`mandates`** — Subscription mandates, customer profile attributes, assigned strategy arm, current status, and attempts used.
-- **`attempts`** — Execution logs for each payment attempt: attempt number, executed virtual day, amount, outcome, failure code, and idempotency key.
-- **`approval_requests`** — Pending human reviews: proposed action, confidence score, expiration day, and resolution status.
-- **`audit_logs`** — Append-only audit trail logging actors, decision types, context payloads, and reasoning.
-
-### PostgreSQL RPCs
-
-All sensitive state transitions are handled by database stored procedures:
-
-- **`execute_attempt`** — Atomically verifies attempt bounds ($< 4$), checks idempotency keys, and creates the attempt record.
-- **`complete_attempt`** — Sets attempt outcome (`success` / `failed`) and updates mandate status to `recovered` or pending recovery.
-- **`set_mandate_action`** — Updates mandate state (`retry`, `stood_down`, `exhausted`) and sets the next scheduled virtual day.
-- **`create_approval_request`** — Atomically creates an approval request and transitions the mandate to `pending_human_approval`.
-- **`resolve_approval`** — Resolves an approval request (`approved` / `rejected`) and advances the mandate state.
-- **`expire_approval_requests`** — Scans and marks past-deadline approvals as expired, standing down associated mandates.
-
----
-
-## API & Dashboard
-
-The dashboard communicates exclusively with the Express REST API. The browser has zero direct access to Supabase database credentials or the Gemini API key.
-
-```
-Browser Dashboard ──► Express REST API ──► Recovery Engine / Guardrails ──► Supabase PostgreSQL
-                                                │
-                                                └──► Google Gemini API (Server-side only)
+```mermaid
+flowchart TD
+    DASHBOARD["Single-Page Dashboard"] --> GET_ELIGIBLE["GET /api/simulations/:id/eligible-mandates<br/>(Inspects Smart mandates with next_action=retry)"]
+    DASHBOARD --> POST_ORDER["POST /api/v1/razorpay/orders<br/>(Manual operator order artifact trigger)"]
+    DASHBOARD --> GET_TRACE["GET /api/mandates/:id/trace<br/>(Single-mandate decision breakdown)"]
+    DASHBOARD --> GET_REPLAY["GET /api/mandates/:id/replay<br/>(Chronological lifecycle timeline)"]
+    DASHBOARD --> GET_APPROVALS["GET /api/approvals & POST /api/approvals/:id/resolve<br/>(Review and resolve pending escalations)"]
+    DASHBOARD --> GET_WEBHOOKS["GET /api/webhooks/recent<br/>(Inspect verified Razorpay Test Mode webhooks)"]
 ```
 
-### Verified API Endpoints
+### Verification of Boundary Isolation
+Isolation between synthetic experiment state and real Razorpay activity has been verified through automated integration tests (`tests/step20.test.js`, `tests/step21.test.js`, and `tests/step23.test.js`):
+- Webhook ingestion does not write to `mandates` or `attempts`.
+- Manual Test Mode order generation does not increment `attempts_used`, does not create an `attempts` record, and does not alter simulation recovery metrics.
+- Simulation execution files do not import or invoke Razorpay order or webhook handlers.
 
-| Method | Route | Description |
+---
+
+## 3. Real Razorpay Test Mode Integration
+
+The repository implements a genuine Razorpay Test Mode integration interacting with Razorpay's live servers in Test Mode, without installing third-party SDK wrappers.
+
+### Webhook Ingestion (`POST /api/v1/webhooks/razorpay`)
+- **Raw-Body Buffer Capture:** Route-level middleware `express.raw({ type: 'application/json' })` captures the unprocessed request body bytes before `express.json()` executes.
+- **HMAC-SHA256 Verification:** `verifyRazorpaySignature()` calculates `crypto.createHmac('sha256', secret).update(rawBody).digest('hex')` and validates it against the `X-Razorpay-Signature` header.
+- **Timing-Safe Comparison:** Compares the calculated hash and header signature using `crypto.timingSafeEqual` to eliminate timing side-channel attacks.
+- **Deduplication & Idempotency:** The payload is stored in the `webhook_events` PostgreSQL table, guarded by a unique index on `event_id`. Duplicate deliveries (PostgreSQL error code `23505`) return HTTP 200 with `{ received: true, duplicate: true }` without re-processing.
+- **No Side Effects on Simulation:** Inbound webhooks record external event receipts. They do not trigger retries, update mandate statuses, or alter experiment metrics.
+
+### Manual Test Mode Order Creation (`POST /api/v1/razorpay/orders`)
+- **Manual-Only Trigger:** Dedicated operator endpoint requiring explicit invocation. Blocked if incoming request headers include `x-automated-batch: 1`.
+- **Preflight Guards:** Validates that the targeted mandate:
+  1. Belongs to the `smart` experiment arm (`experiment_arm === 'smart'`).
+  2. Currently has a `retry` decision (`next_action === 'retry'`).
+  3. Complies with the attempt ceiling (`attempts_used < 4`).
+  4. Has a valid positive currency amount (`amount > 0`).
+- **REST API Call:** Issues a direct HTTPS POST request to `https://api.razorpay.com/v1/orders` using HTTP Basic Authentication (`RAZORPAY_KEY_ID:RAZORPAY_KEY_SECRET`).
+- **Payload Sanitization:** Sends only `amount` (converted to paise for INR) and `currency`. Customer PII (name, email, phone) is never transmitted, and `notify` is never set to true.
+- **Audit Persistence:** The resulting Razorpay order ID and status are logged to `audit_logs` under `decision_type = 'razorpay_order_created'` with full metadata and the required disclosure string. No attempt row is created in `attempts`.
+- **Mandatory Disclosure:** Every response returns the disclosure:
+  > *"This creates a real Razorpay Test Mode order artifact. It is not a payment retry and does not execute a payment."*
+
+---
+
+## 4. Recovery Policies & Guardrails
+
+### Comparative Strategy Arms
+
+| Strategy | Decision Policy | Attempt Limits | Execution Path |
+|:---|:---|:---|:---|
+| **Control** | No retry after initial failure | 1 initial attempt (0 retries) | Evaluates day 0. On failure, immediately stands down. |
+| **Baseline** | Fixed calendar schedule ($D \rightarrow D+1 \rightarrow D+3 \rightarrow D+6$) | UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries). | Deterministic fixed-day scheduling. Unassisted calendar baseline. |
+| **Smart** | Classify $\rightarrow$ Propose $\rightarrow$ Guardrails $\rightarrow$ Action | UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries). | Classifies decline reason, consults AI or fallback heuristic, filters via guardrails. |
+
+### Smart Decision Pipeline
+1. **Failure Classification:** Maps gateway decline codes into normalized semantic categories:
+   - `soft_decline` (e.g., temporary insufficient balance, network timeout) $\rightarrow$ `retryEligible: true`
+   - `hard_decline` (e.g., stolen card, mandate cancelled, account closed) $\rightarrow$ `retryEligible: false`
+   - `unknown` (unrecognized or missing failure code) $\rightarrow$ `retryEligible: false`
+2. **AI Action Proposal (`smartAgent.js`):**
+   - Calls Google Gemini 2.0 Flash (`temperature: 0`, structured JSON output) proposing `{ action, retryDelayDays, reasoning }`.
+   - If the API times out or returns an error, switches to a deterministic heuristic fallback.
+3. **Deterministic Guardrails (`guardrails.js`):**
+   - **Hard Failures Stand Down:** Hard declines and unknown categories are permanently stood down with zero retries.
+   - **Attempt Ceiling:** UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries). Mandates with `attempts_used >= 4` transition to `exhausted`.
+   - **Delay Range:** Scheduled retry delays must be integers between 0 and 7 virtual days.
+   - **Consent Verification:** Alternative channels such as payment links require explicit `contact_consent === true`.
+
+### Confidence & Human Review Implementation
+- **Current Confidence Behavior:** The current deterministic policy uses a fixed confidence of 0.80, so the <0.70 human-review confidence threshold cannot currently trigger in practice.
+- **Model Output Schema:** Gemini's response schema provides `{ action, retryDelayDays, reasoning }` but does not output a dynamic confidence probability.
+- **Defensive Boundary:** The <0.70 threshold in `guardrails.js` is implemented as an architectural safety boundary.
+- **Approval Workflow:** Human approval records can be created via `requestHumanApproval()`, queried via `GET /api/approvals`, and resolved by operators using `POST /api/approvals/:id/resolve` (`decision: 'approved' | 'rejected'`). In automated batch simulations, unreviewed approvals auto-expire deterministically at their virtual deadline (`expireHumanApprovals`).
+
+---
+
+## 5. Observability, Replay & Auditability
+
+SettleLoop provides auditable decision inspection derived entirely from stored relational data without requiring third-party tracing agents.
+
+| Capability | Endpoint / Mechanism | Description |
 |:---|:---|:---|
-| `GET` | `/api/health` | Service health check |
-| `POST` | `/api/simulations` | Initializes a new simulation run with `{ seed, mandateCount, maxDays }` |
-| `GET` | `/api/simulations/:runId` | Retrieves current simulation run state, virtual day, and status |
-| `POST` | `/api/simulations/:runId/run` | Executes the simulation across Control, Baseline, and Smart arms |
-| `GET` | `/api/simulations/:runId/metrics` | Calculates and returns comprehensive recovery and safety metrics |
+| **Decision Trace** | `GET /api/mandates/:id/trace` | Reconstructs the latest decision context for a single mandate: experiment arm, failure category, AI proposal, guardrail outcome, scheduled retry day, and pending approval state. |
+| **Decision Replay** | `GET /api/mandates/:id/replay` | Assembles a complete chronological lifecycle timeline from creation to termination using stored rows from `mandates`, `attempts`, `audit_logs`, and `approval_requests`. |
+| **Approval Management** | `GET /api/approvals`<br/>`POST /api/approvals/:id/resolve` | Operator interface for viewing and resolving pending human approval escalations. |
+| **Webhook Status** | `GET /api/webhooks/recent` | Returns recent verified inbound webhook receipts directly from PostgreSQL `webhook_events`. |
+| **Audit Log Table** | `audit_logs` | Immutable audit log capturing actor, decision type, input context, output actions, reasoning, and optional JSONB metadata. |
+
+*Note: SettleLoop does not implement user authentication, multi-tenant RBAC, or distributed OpenTelemetry tracing.*
 
 ---
 
-## Metrics & Evaluation
+## 6. Database Schema & Stored Procedures
 
-SettleLoop calculates recovery and safety metrics from persisted database records:
+The database layer runs on Supabase PostgreSQL with atomic stored procedures managing sensitive lifecycle transitions.
 
-| Metric | Definition |
-|:---|:---|
-| **Recovery Rate** | Percentage of mandates successfully recovered ($\text{Recovered Mandates} / \text{Total Mandates}$). |
-| **Recovered Amount** | Total monetary value successfully settled across recovered mandates. |
-| **Executed Attempts** | Total simulated payment attempts across all mandates in the arm. |
-| **Attempts / Mandate** | Average retry overhead per customer. |
-| **Attempts / Recovery** | Cost-efficiency ratio of attempts required per successful recovery. |
-| **Average Time to Recovery** | Mean virtual days elapsed from first due date to successful settlement. |
-| **Smart Recovery Lift** | Absolute percentage-point ($\text{pp}$) and relative ($\%$) recovery gain of Smart vs Baseline/Control. |
-| **Safety Monitor** | Active tracking of hard-decline retries, duplicate attempts, and consent violations. |
+### Relevant Tables
+
+```
+                    ┌───────────────────────────┐
+                    │      simulation_runs      │
+                    │───────────────────────────│
+                    │ id (PK, UUID)             │
+                    │ random_seed (BIGINT)      │
+                    │ current_day (INT)         │
+                    │ max_days (INT)            │
+                    │ status (TEXT)             │
+                    │ created_at (TIMESTAMPTZ)  │
+                    └─────────────┬─────────────┘
+                                  │ 1:N
+                                  ▼
+┌───────────────────────────┐   ┌───────────────────────────┐
+│      webhook_events       │   │         mandates          │
+│───────────────────────────│   │───────────────────────────│
+│ id (PK, UUID)             │   │ id (PK, UUID)             │
+│ event_id (UNIQUE, TEXT)   │   │ mandate_id (TEXT, 'M-1')  │
+│ event_type (TEXT)         │   │ run_id (FK, UUID)         │
+│ payload (JSONB)           │   │ experiment_arm (TEXT)     │
+│ signature_verified (BOOL) │   │ amount (NUMERIC)          │
+│ received_at (TIMESTAMPTZ) │   │ status (TEXT)             │
+└───────────────────────────┘   │ attempts_used (INT)       │
+                                │ first_due_day (INT)       │
+                                │ next_action (TEXT)        │
+                                │ next_action_day (INT)     │
+                                └──────┬──────────────┬─────┘
+                                       │ 1:N          │ 1:N
+                    ┌──────────────────┘              └──────────────────┐
+                    ▼                                                    ▼
+┌───────────────────────────┐   ┌───────────────────────────┐   ┌───────────────────────────┐
+│         attempts          │   │        audit_logs         │   │     approval_requests     │
+│───────────────────────────│   │───────────────────────────│   │───────────────────────────│
+│ id (PK, UUID)             │   │ id (PK, UUID)             │   │ id (PK, UUID)             │
+│ mandate_id (FK, UUID)     │   │ run_id (FK, UUID)         │   │ run_id (FK, UUID)         │
+│ run_id (FK, UUID)         │   │ mandate_id (FK, UUID)     │   │ mandate_id (FK, UUID)     │
+│ attempt_number (INT)      │   │ attempt_id (FK nullable)  │   │ proposed_action (JSONB)   │
+│ executed_day (INT)        │   │ actor (TEXT)              │   │ status (TEXT)             │
+│ channel (TEXT)            │   │ decision_type (TEXT)      │   │ expires_day (INT)         │
+│ outcome (TEXT)            │   │ input (JSONB)             │   │ decided_by (TEXT)         │
+│ decline_category (TEXT)   │   │ output (JSONB)            │   │ decided_at (TIMESTAMPTZ)  │
+│ retry_eligible (BOOL)     │   │ metadata (JSONB)          │   │ created_at (TIMESTAMPTZ)  │
+│ idempotency_key (TEXT)    │   │ created_at (TIMESTAMPTZ)  │   └───────────────────────────┘
+└───────────────────────────┘   └───────────────────────────┘
+```
+
+### PostgreSQL Stored Procedures (Atomic RPCs)
+- **`execute_attempt`:** Atomically creates an attempt record, checks the maximum attempt ceiling (`attempts_used < 4`), increments `attempts_used`, and guarantees idempotency.
+- **`complete_attempt`:** Records attempt outcome (`success` / `failure`), failure classification codes, and advances recovered mandates to `status = 'recovered'`.
+- **`set_mandate_action`:** Sets the scheduled action (`retry`, `stand_down`, `exhausted`) and next virtual action day.
+- **`create_approval_request`:** Transitions mandate to `pending_human_approval` and inserts an approval record with an expiration day.
+- **`resolve_approval`:** Resolves approval requests (`approved` returns mandate to retry; `rejected` stands down mandate).
+- **`expire_approval_requests`:** Automatically marks past-deadline approvals as expired and stands down associated mandates.
 
 ---
 
-### Final n=300 Synthetic Experiment Results
+## 7. Metrics & Evaluation Methodology
 
-*The following authoritative results reflect the completed final synthetic experiment executed against live Supabase and live Gemini.*
+Synthetic recovery performance is evaluated through `getSimulationMetrics()`, which executes read-only SQL queries against:
+1. `simulation_runs`
+2. `mandates`
+3. `attempts`
 
-**Run Parameters:**  
-- **Run ID:** `02e1ecea-1a09-4813-a994-f007ba5fc497`  
-- **Seed:** `42000`  
-- **Cohort Size:** `300` mandates total (100 Control, 100 Baseline, 100 Smart)  
-- **Virtual Schedule Window:** Max `14` virtual days (Evaluated days: `0–9`)  
-- **Termination Reason:** `no_future_actions_within_window`  
-- **Total Executed Attempts (All Arms):** `347`  
-- **Execution Elapsed Time:** `979.13s`  
+`audit_logs`, `webhook_events`, and real Razorpay Test Mode orders **do not** participate in experiment metrics calculation.
 
-| Metric | Control (Stand Down) | Baseline (Fixed Schedule) | Smart (AI + Guardrails) |
+### Computed Metrics per Arm
+- **Recovery Rate:** Proportion of mandates transitioned to `recovered` ($\text{Recovered} / \text{Total Mandates}$).
+- **Recovered Volume:** Total monetary value collected across recovered mandates.
+- **Attempts per Recovery:** Total executed attempts divided by total recoveries (cost-efficiency metric).
+- **Average Time to Recovery:** Mean virtual days elapsed from first due day to successful recovery.
+- **Smart Lift vs Baseline & Control:** Both absolute percentage-point ($\text{pp}$) and relative ($\%$) recovery differences:
+  $$\text{Absolute Lift} = \text{Rate}_{\text{Smart}} - \text{Rate}_{\text{Comparison}}$$
+  $$\text{Relative Lift} = \frac{\text{Rate}_{\text{Smart}} - \text{Rate}_{\text{Comparison}}}{\text{Rate}_{\text{Comparison}}}$$
+- **Safety Violation Monitors:** Active counts of hard-decline retries, duplicate attempts, and customer consent violations.
+
+---
+
+## 8. Determinism & Reproducibility
+
+### Determinism Resolution
+Earlier iterations exhibited stochastic variance caused by passing non-deterministic PostgreSQL random UUIDs into the payment outcome simulator. This was resolved:
+- The simulation runtime utilizes deterministic synthetic identifiers (`mandate_id` formatted as `M-1`, `M-2`, ...) paired with the run seed to initialize PRNG states and SHA-256 hashes.
+- In deterministic mode (`benchmark: true`), recovery evaluations bypass stochastic LLM calls, executing identical deterministic heuristic decisions.
+- Verified in `tests/determinism.test.js`: two completely fresh simulation runs generated with identical parameters (`seed: 20001`, `mandateCount: 9`, `maxDays: 7`) produce byte-for-byte identical database statuses, attempt counts, and metrics.
+
+### Local CLI Runner
+For reproducible local execution outside HTTP timeouts, use `scripts/run-recovery-cli.js`:
+```bash
+# Execute recovery for an existing simulation run in deterministic benchmark mode
+node scripts/run-recovery-cli.js <runId> --deterministic
+```
+
+---
+
+## 9. Benchmark Status & Empirical Findings
+
+### Current Benchmark Status
+> **Benchmark Notice:** A large-scale comparative benchmark ($n \ge 300$) executed under the corrected deterministic benchmark pipeline is **pending a fresh post-fix run**. Stale pre-fix benchmark figures (such as earlier stochastic seed-42000 runs) have been deprecated and are not presented as current performance claims.
+
+### Verified Deterministic Reproducibility Run (Small Cohort)
+To verify reproducible mechanics across Control, Baseline, and Smart arms under exact deterministic conditions, a 9-mandate verification run was recorded:
+- **Seed:** `20001`
+- **Total Mandates:** `9` (3 Control, 3 Baseline, 3 Smart)
+- **Schedule Window:** `7` virtual days
+- **Execution Mode:** Deterministic benchmark mode
+
+| Metric | Control (No Retry) | Baseline (Fixed Schedule) | Smart (Adaptive Policy) |
 |:---|:---:|:---:|:---:|
-| **Recovery Rate** | **65.00%** (65 / 100) | **80.00%** (80 / 100) | **73.00%** (73 / 100) |
-| **Total Amount** | ₹2,422,396.12 | ₹2,343,614.12 | ₹2,653,372.67 |
-| **Recovered Amount** | ₹1,468,108.78 | ₹1,895,988.24 | ₹1,874,473.42 |
-| **Executed Attempts** | 100 | 122 | 125 |
-| **Attempts / Mandate** | 1.00 | 1.22 | 1.25 |
-| **Attempts / Recovery** | 1.5385 | 1.5250 | 1.7123 |
-| **Avg Time to Recovery** | 0.0 days | 0.3375 days | 0.6849 days |
-| **Smart Lift vs Control** | — | — | **+8.00 pp** (+12.31% rel) |
-| **Smart Lift vs Baseline** | — | — | **-7.00 pp** (-8.75% rel) |
-| **Safety Violations** | 0 | 0 | **0 (SAFE — 100% compliant)** |
+| **Mandate Count** | 3 | 3 | 3 |
+| **Recovery Rate** | 100.0% (3 / 3) | 66.67% (2 / 3) | 66.67% (2 / 3) |
+| **Total Amount** | ₹91,724.29 | ₹93,475.63 | ₹66,788.56 |
+| **Recovered Amount** | ₹91,724.29 | ₹53,266.70 | ₹26,855.69 |
+| **Executed Attempts** | 3 | 3 | 5 |
+| **Attempts / Mandate** | 1.00 | 1.00 | 1.67 |
+| **Avg Time to Recovery** | 0.0 days | 0.0 days | 2.0 days |
+| **Smart Lift vs Baseline** | — | — | **0.00 pp** (0.0% rel) |
+| **Smart Lift vs Control** | — | — | **-33.33 pp** (-33.33% rel) |
+| **Safety Violations** | 0 | 0 | **0 (100% compliant)** |
+
+*Interpretation:* In this small test cohort, Control experienced zero initial payment declines, achieving natural recovery. Smart matched Baseline's recovery rate (66.67%) while testing retry evaluations over 5 attempts. This small cohort demonstrates determinism and safety compliance, not statistically significant comparative performance superiority.
 
 ---
 
-## Testing
+## 10. Automated Testing & Verification
 
-The test suite uses the native Node.js test runner (`node:test`) and verifies all engine layers, safety invariants, and API contracts:
+The test suite runs on Node.js's native test runner (`node:test`) and contains **17 test suites** covering unit logic, state machines, API routes, database RPCs, and Razorpay integrations.
 
 ```bash
-# Run all verified tests
+# Execute the full test suite
 npm test
 ```
 
-### Verified Test Suite Breakdown
+### Test Suite Status (Latest Verified Run)
+- **Total Tests:** 254
+- **Passed:** 250
+- **Failed:** 4
+- **Newly Introduced Failures:** 0
 
-- **Total Test Suites:** 10 suites in `tests/` (`step10.test.js` through `step19.test.js`)
-- **Total Test Cases:** 191 automated test declarations
-  - Step 10: Recovery Engine Arm Isolation & Dispatch (16 tests)
-  - Step 11: Recovery Runner & Virtual Clock Jumping (9 tests)
-  - Step 12: Failure Classification Taxonomy (9 tests)
-  - Step 13: Smart Agent Gemini Integration & Heuristic Fallback (24 tests)
-  - Step 14: Deterministic Guardrails & Safety Invariants (29 tests)
-  - Step 15: Human Approval Lifecycle & Expiration (33 tests)
-  - Step 16: Evaluation Metrics Precision & Violation Monitors (29 tests)
-  - Step 17: Express REST API Endpoints & Validations (13 tests)
-  - Step 18: Multi-Arm Smart Integration (18 tests)
-  - Step 19: End-to-End Stress & Repeat-Execution Safety (11 tests)
+### Passing Test Groups
+- **Step 20 — Razorpay Real Integration (22 tests):** Webhook raw-body verification, timingSafeEqual comparison, idempotency index, manual order creation, attempt guardrails, secret protection.
+- **Step 21 — API Hardening (7 tests):** Rate limiting, Zod payload validation, batch header isolation (`x-automated-batch: 1`).
+- **Step 22 — Dashboard UX Corrections (7 tests):** Eligible mandate filtering, trace endpoints, approval lifecycle queries.
+- **Step 23 — Final Integration & Isolation (10 tests):** Real webhook ingestion, approval concurrency resolution, manual order creation, and byte-for-byte database isolation verification.
+- **Step 24 — Decision Replay (17 tests):** Replay envelope structure, chronological event ordering, audit log parsing, and read-only query isolation.
+- **Determinism Suite (1 test):** Dual-run identical outcome verification across fresh database UUIDs.
+- **Steps 10–16 (176 tests):** Arm dispatch, runner clock advancement, failure classification, guardrail invariants, approval states, and metrics calculations.
+
+### Pre-Existing Baseline Failures
+The 4 recorded failures represent historical regression assertions from earlier phases:
+1. `tests/step17.test.js:153` (`6. POST /run uses the existing recovery runner`): Asserts that Smart arm mandates have 0 attempts after `/run`. This test was written prior to Step 18 enabling Smart arm processing in the runner.
+2. `tests/step18.test.js:309` (`4. Previous failure: Failure Classifier runs and passes category to Smart Agent`): Asserts the Gemini API mock intercept count.
+3. `tests/step18.test.js:548` (`8. Guardrail stand_down: existing stand_down RPC used; no attempt created`): Asserts mandate status is `stood_down` or `pending`; the simulated payment attempt succeeded, transitioning the mandate to `recovered`.
+4. `tests/step19.test.js:418` (`3. Attempt safety: zero/same-day delay is safely scheduled for next day`): Assertion regarding null `next_action_day` on retry adjustment.
 
 ---
 
-## Local Setup
+## 11. Security & Safety Controls
+
+| Category | Implemented Control | File / Mechanism |
+|:---|:---|:---|
+| **Webhook Authentication** | Raw-buffer HMAC-SHA256 signature verification | `src/api/razorpayWebhook.js` |
+| **Side-Channel Defense** | Constant-time signature comparison using `crypto.timingSafeEqual` | `src/api/razorpayWebhook.js` |
+| **Webhook Idempotency** | PostgreSQL unique constraint index on `event_id` | `db/migrations/001_phase1_webhook_events.sql` |
+| **Request Validation** | Strict Zod body parsing on simulation, order, and approval routes | `src/api/validation.js` |
+| **Rate Limiting** | `express-rate-limit` on general API, webhooks, and manual orders | `src/middleware/rateLimiter.js` |
+| **Batch Isolation** | Manual order route rejects `x-automated-batch: 1` with HTTP 403 | `src/api/razorpayOrder.js` |
+| **Payment Attempt Cap** | UPI AutoPay retry guardrail: max 4 total attempts (1 initial + 3 retries) | `src/recovery/guardrails.js`, DB RPCs |
+| **Credential Hygiene** | Supabase service key, Gemini key, and Razorpay keys isolated server-side | `server.js`, `src/config/supabase.js` |
+
+*Security Boundaries: The application does not implement user login, session management, or customer-facing payment authentication.*
+
+---
+
+## 12. End-to-End Demo Workflow
+
+1. **Initialize Simulation:**  
+   Navigate to the dashboard or call `POST /api/simulations` with `{ seed: 20001, mandateCount: 9, maxDays: 7 }`.
+2. **Execute Multi-Arm Run:**  
+   Call `POST /api/simulations/:runId/run` (with `{ "deterministic": true }` for deterministic benchmark execution).
+3. **Inspect Recovery Metrics:**  
+   Call `GET /api/simulations/:runId/metrics` to review Control, Baseline, and Smart recovery rates, attempt counts, and lift.
+4. **Inspect Decision Trace & Replay:**  
+   Select a mandate to query `GET /api/mandates/:id/trace` and `GET /api/mandates/:id/replay` for timeline reconstruction.
+5. **Review Human Approvals (if escalated):**  
+   Query `GET /api/approvals` and resolve via `POST /api/approvals/:id/resolve` (`approved` or `rejected`).
+6. **Deliver Real Razorpay Test Mode Webhook:**  
+   Send a signed test payload to `POST /api/v1/webhooks/razorpay` and inspect `GET /api/webhooks/recent`.
+7. **Create Real Test Mode Order Artifact:**  
+   Select an eligible Smart mandate and trigger `POST /api/v1/razorpay/orders`.  
+   *Note: This creates a real Razorpay Test Mode order artifact. It is not a payment retry and does not execute a payment.*
+8. **Verify System Isolation:**  
+   Re-fetch simulation metrics to verify that webhook ingestion and manual order creation caused zero changes to synthetic experiment tables.
+
+---
+
+## 13. System Limitations
+
+- **Test Mode Only:** Razorpay integration is strictly restricted to Test Mode credentials and test endpoints.
+- **Order Artifacts Only:** Manual Test Mode order creation generates an external order record for demonstration; it does not process a payment or trigger a bank retry.
+- **No Production Rails:** SettleLoop does not connect to live banking networks or live UPI AutoPay rails.
+- **No Authentication / RBAC:** The API and dashboard operate without user authentication or role-based access control.
+- **Fixed Policy Confidence:** The current deterministic policy uses a fixed confidence of 0.80, so the <0.70 human-review confidence threshold cannot currently trigger in practice.
+- **Pending Large-Scale Benchmark:** A large-n ($n \ge 300$) comparative evaluation under the post-fix deterministic runner is pending execution.
+- **Synthetic Results Disclaimer:** Metrics derived from synthetic cohorts illustrate policy mechanics and do not predict real-world recovery performance.
+
+---
+
+## 14. Project Structure
+
+```
+SettleLoop/
+├── api/
+│   └── index.js                      # Vercel serverless function entrypoint
+├── db/
+│   └── migrations/
+│       └── 001_phase1_webhook_events.sql  # Webhook events table & audit metadata
+├── public/
+│   └── dashboard/
+│       ├── app.js                    # Dashboard UI client logic
+│       ├── index.html                # Single-page dashboard HTML
+│       └── styles.css                # CSS design system (tokens, themes)
+├── scripts/
+│   └── run-recovery-cli.js           # CLI runner for local/benchmark execution
+├── src/
+│   ├── api/
+│   │   ├── razorpayOrder.js          # Manual Razorpay Test Mode order creation
+│   │   ├── razorpayWebhook.js        # Inbound signed webhook ingestion handler
+│   │   ├── routes.js                 # Express REST API endpoints
+│   │   └── validation.js             # Zod request validation schemas
+│   ├── config/
+│   │   └── supabase.js               # Supabase PostgreSQL client initialization
+│   ├── evaluation/
+│   │   └── metrics.js                # Read-only experiment metrics computation
+│   ├── generators/
+│   │   └── syntheticDataGenerator.js # Seeded synthetic mandate generator
+│   ├── middleware/
+│   │   └── rateLimiter.js            # express-rate-limit configuration
+│   ├── recovery/
+│   │   ├── baselinePolicy.js         # Baseline fixed-schedule retry policy
+│   │   ├── controlPolicy.js          # Control stand-down policy
+│   │   ├── failureClassifier.js      # Error code categorization taxonomy
+│   │   ├── guardrails.js             # Deterministic safety rule validation
+│   │   ├── humanApproval.js          # Escalation creation and resolution
+│   │   ├── recoveryEngine.js         # Mandate processor and arm dispatcher
+│   │   ├── recoveryRunner.js         # Multi-arm runner and virtual clock stepping
+│   │   ├── smartAgent.js             # Gemini AI decision proposal & fallback
+│   │   └── smartPolicy.js            # Smart recovery execution pipeline
+│   ├── simulators/
+│   │   └── paymentSimulator.js       # Deterministic hash-based payment simulator
+│   └── stateMachine/
+│       └── mandateStateMachine.js    # Mandate lifecycle transition assertions
+├── tests/
+│   ├── determinism.test.js           # Determinism & reproducibility test suite
+│   ├── step10.test.js ... step19.test.js  # Phase 1 & 2 integration test suites
+│   ├── step20.test.js                # Razorpay Real Integration tests
+│   ├── step21.test.js                # API Hardening tests
+│   ├── step22.test.js                # Dashboard UX Correction tests
+│   ├── step23.test.js                # Final Integration & Isolation tests
+│   └── step24.test.js                # Decision Replay tests
+├── package.json                      # Dependencies and test runner script
+├── server.js                         # Local Express server entrypoint
+└── vercel.json                       # Vercel deployment routing configuration
+```
+
+---
+
+## 15. Local Development Setup
 
 ### Prerequisites
-- Node.js 18+
-- Supabase account & project (with SettleLoop schema and RPCs applied)
-- Google Gemini API key
+- Node.js 18 or higher
+- Supabase project with database schema and RPCs applied
+- Google Gemini API key (optional for deterministic benchmark mode)
+- Razorpay Test Mode API keys (optional for World B features)
 
 ### 1. Clone & Install Dependencies
 ```bash
@@ -331,103 +526,57 @@ npm install
 ```
 
 ### 2. Configure Environment Variables
-Create a `.env` file in the project root:
+Create a `.env` file in the project root based on `.env.example`:
 ```bash
 cp .env.example .env
 ```
 
-Populate the required environment variables:
+Set the required environment keys:
 ```env
+# Required for Database Access
 SUPABASE_URL=https://<your-project-ref>.supabase.co
 SUPABASE_SECRET_KEY=<your-supabase-service-role-key>
+
+# Required for AI Decisioning (Optional in Benchmark Mode)
 GEMINI_API_KEY=<your-gemini-api-key>
+
+# Required for Razorpay Test Mode Features (Optional for Synthetic Simulation)
+RAZORPAY_KEY_ID=<your-test-mode-key-id>
+RAZORPAY_KEY_SECRET=<your-test-mode-key-secret>
+RAZORPAY_WEBHOOK_SECRET=<your-configured-webhook-secret>
+
+# Server Configuration
+PORT=3000
+NODE_ENV=development
 ```
 
-> **Security Note:** Secrets are used exclusively on the server. Never commit `.env` or expose service role keys to clients.
-
-### 3. Start the Server
+### 3. Start the Application
 ```bash
 npm start
 ```
-Server will start at `http://localhost:3000`.
-
-### 4. Open the Dashboard
-Navigate to:
+The server will bind to `http://localhost:3000`. Access the dashboard at:
 ```
 http://localhost:3000/dashboard/
 ```
 
----
+### 4. Run Automated Tests
+```bash
+npm test
+```
 
-## Deployment
-
-SettleLoop is deployed on **Vercel** as a unified full-stack web application:
-
-- **Live Application:** [https://settleloop-gamma.vercel.app](https://settleloop-gamma.vercel.app)
-- **Edge Static Assets:** Dashboard files in `public/dashboard/` are served at the edge.
-- **Serverless API Bridge:** `api/index.js` exports the Express application as a Vercel Serverless Function handling all `/api/*` routes.
-- **Route Redirection:** `vercel.json` automatically redirects `/` and `/dashboard` to `/dashboard/`.
-
----
-
-## Engineering Decisions
-
-- **Why Simulation Instead of Live Payments:** Real recurring payments carry financial consequences and strict bank pacing rules. A simulation sandbox allows safe, repeatable experimentation and benchmarking without risking real money or customer relationships.
-- **Why a Persisted Virtual Clock:** Real recovery spans days. Storing the virtual clock in PostgreSQL allows running multi-day journeys in seconds while maintaining strict state persistence and audit trails.
-- **Why Control and Baseline Arms:** Rigorous benchmarking demands identical cohorts. Control measures the zero-intervention baseline; Baseline measures fixed calendar retries.
-- **Why AI is Separated from Execution:** LLMs can hallucinate or suggest unsafe parameters. SettleLoop restricts Gemini to advisory proposals, guaranteeing that deterministic guardrails and PostgreSQL RPCs retain execution authority.
-- **Why Deterministic Guardrails:** Hard safety constraints (e.g., never retry stolen cards, obey attempt limits) must never depend on probabilistic AI outputs.
-- **Why PostgreSQL RPCs for State Transitions:** Atomic database transactions prevent race conditions, enforce attempt limits, and maintain strict idempotency across concurrent operations.
-- **Why Full Audit Logs:** Financial recovery systems require complete accountability. Every decision, reasoning payload, and timestamp is immutably logged.
+### 5. Run Reproducible CLI Simulation
+```bash
+# Execute a simulation run in deterministic benchmark mode
+node scripts/run-recovery-cli.js <runId> --deterministic
+```
 
 ---
 
-## Scope & Limitations
+## 16. Deployment Configuration
 
-In the interest of technical transparency:
-
-- **Simulated Payments vs Real Razorpay Integration:** SettleLoop's multi-day recovery benchmarking operates on deterministic synthetic customer cohorts across Control, Baseline, and Smart arms. It does not execute automated live banking retries. The Phase 3 Razorpay integration provides genuine Test Mode HMAC-verified webhook ingestion and manual-only order creation; manual Razorpay orders are strictly isolated artifacts and do NOT constitute automated payment retries.
-- **Experimental AI Decisioning:** AI-assisted recovery is an experimental decision-support mechanism. Responses depend on prompt context and model availability.
-- **Human Approval Workflow & Governance:** Phase 6 implemented the operator interface and `POST /api/approvals/:id/resolve` (along with `GET /api/approvals`) for reviewing and resolving pending approvals (Approve/Reject). In automated simulation benchmark runs, approvals that reach their deadline without manual intervention are deterministically auto-expired by `expireHumanApprovals` to prevent simulation stalls.
-- **Not a Production Benchmark:** Metrics produced from synthetic customer cohorts demonstrate simulation mechanics and should not be taken as real-world recovery guarantees.
-- **Step 18 Test #9 — Known Timing/Test Edge Case:** The test *"Guardrail human_review: requestHumanApproval used; pending_human_approval; no duplicate"* intermittently fails across repeated runs on the pre-Phase-2 commit (`82d0318`) and on the Phase 2 HEAD. The failure is not a production safety regression. The root cause is a pseudo-random payment simulator outcome: the test sets a mandate with a scheduled retry due on day 1, then calls `executeSmartPolicy` at `currentDay: 1`. Because a retry is due, `executeSmartPolicy` correctly executes Attempt 2 before running the AI/guardrail pipeline. If Attempt 2 happens to **succeed** (~60% probability, driven by the SHA-256 hash of a randomly generated mandate UUID), the mandate transitions to `recovered` and the `pending_human_approval` assertion block is skipped — the test passes silently. If Attempt 2 **fails** (~40% probability), the AI mock returns `human_review`, the mandate transitions to `pending_human_approval`, and the test then asserts `allAttempts.length === 1` — but 2 attempts legitimately exist (the setup attempt + the executed retry), producing `2 !== 1`. The production escalation path (soft-fail → AI proposal → guardrail → human review) is correct; the test assertion assumes human review is reached without executing the due retry, which contradicts the designed Smart policy execution order. This edge case predates Phase 2 and Phase 3 and was reproduced 1/3 times on commit `82d0318`.
-
----
-
-## Phase 3 — Real Razorpay Test Mode Integration
-
-Phase 3 adds genuine Razorpay Test Mode webhook ingestion and a manual-only order creation endpoint, both strictly isolated from simulation data.
-
-### New Endpoints
-
-| Endpoint | Purpose |
-|---|---|
-| `POST /api/v1/webhooks/razorpay` | Real inbound Razorpay webhook. Validates HMAC-SHA256 signature; idempotent via `event_id`; never touches simulation tables. |
-| `POST /api/v1/razorpay/orders` | **Manual-only.** Creates a real Razorpay Test Mode order artifact. It is NOT a payment retry and does NOT execute a payment. Never triggered by simulation runner. |
-
-### Environment Variables (Phase 3)
-
-| Variable | Source |
-|---|---|
-| `RAZORPAY_KEY_ID` | Razorpay Dashboard → Test Mode API Keys |
-| `RAZORPAY_KEY_SECRET` | Razorpay Dashboard → Test Mode API Keys |
-| `RAZORPAY_WEBHOOK_SECRET` | Configured **separately** when creating a webhook in Razorpay Dashboard |
-
-> `RAZORPAY_WEBHOOK_SECRET` is NOT generated alongside the API key — you choose it when creating the webhook endpoint in the Razorpay Dashboard.
-
-### Razorpay SDK
-
-**Not installed.** Phase 3 uses direct REST API calls (`fetch` to `https://api.razorpay.com/v1/orders`) and Node's built-in `crypto` module for HMAC-SHA256 signature verification and `timingSafeEqual` comparison.
-
-### Live Proof — Manual Razorpay Setup Required
-
-Real Razorpay Test Mode credentials have not been verified against a live webhook delivery as of this commit. To complete A4 (Live Razorpay Proof):
-
-1. Deploy the application to a public HTTPS URL.
-2. In Razorpay Dashboard (Test Mode): create a webhook pointing to `https://<deployed-host>/api/v1/webhooks/razorpay`.
-3. Set `RAZORPAY_WEBHOOK_SECRET` to the exact secret configured in the Razorpay Dashboard.
-4. Subscribe to `payment.failed` events.
-5. Trigger a test `payment.failed` event and verify `webhook_events` receives exactly one row with `signature_verified = true`.
-6. Replay the same event and verify idempotency.
-7. Verify `mandates`, `attempts`, and simulation metrics are unchanged throughout.
-8. Use `POST /api/v1/razorpay/orders` with a valid Smart mandate ID to create a real order artifact and verify it in Razorpay Dashboard.
+SettleLoop is configured for deployment on **Vercel**:
+- **Live Deployment:** [https://settleloop-gamma.vercel.app](https://settleloop-gamma.vercel.app)
+- **Static Dashboard:** `public/dashboard/` assets are served directly from Vercel's edge network.
+- **Serverless API Bridge:** `api/index.js` wraps the Express application to execute `/api/*` endpoints as serverless function invocations.
+- **Path Rewrites:** `vercel.json` maps incoming root requests `/` and `/dashboard` to `/dashboard/`.
+- **Infrastructure Scope:** Deployment hosts the web application and API; no live payment processing or banking rails are connected.
