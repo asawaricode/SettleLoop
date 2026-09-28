@@ -169,7 +169,7 @@ function applyGuardrails(rawProposal, category) {
  * @param {object} context
  * @returns {string} Prompt text
  */
-function buildPrompt(context) {
+export function buildPrompt(context) {
   const {
     mandateId,
     attemptsUsed,
@@ -178,7 +178,6 @@ function buildPrompt(context) {
     category,
     retryEligible,
     declineCode,
-    balanceVolatility,
   } = context;
 
   return `You are a payment recovery AI for a recurring mandate system.
@@ -192,15 +191,13 @@ A payment attempt has failed and you must propose a recovery action.
 - Decline Category: ${category}
 - Decline Code: ${declineCode || 'N/A'}
 - Retry Eligible (classifier): ${retryEligible}
-- Balance Volatility: ${balanceVolatility} (0 = stable, 1 = very volatile)
 
 ## Rules You Must Follow
 1. Hard or unknown failures must NEVER be retried — always propose stand_down.
 2. Soft failures with remaining attempts may be retried after a delay.
 3. If attempts are exhausted (${attemptsUsed} >= ${maxAttempts}), propose stand_down.
 4. retryDelayDays must be an integer from 1 to ${MAX_RETRY_DELAY_DAYS}.
-5. For high balance volatility (> 0.7), prefer a longer delay (3–5 days).
-6. For low balance volatility (≤ 0.3), prefer a shorter delay (1–2 days).
+5. Soft declines with remaining attempts should be scheduled with a delay of 1–3 days.
 
 ## Output Format
 Respond with ONLY a valid JSON object. No explanation, no markdown, no extra text.
@@ -329,14 +326,15 @@ async function callGeminiAPI(prompt, context) {
  * }>}
  */
 export async function proposeSmartRecoveryAction(params = {}) {
+  const observation = params?.observation;
   const mandate = params?.mandate;
   const failure = params?.failure;
 
-  const mandateId = params?.mandateId ?? mandate?.id ?? mandate?.mandate_id;
-  const attemptsUsed = params?.attemptsUsed ?? mandate?.attempts_used ?? 0;
+  const mandateId = observation?.mandateId ?? params?.mandateId ?? mandate?.id ?? mandate?.mandate_id;
+  const attemptsUsed = observation?.attemptsUsed ?? params?.attemptsUsed ?? mandate?.attempts_used ?? 0;
   const maxAttempts = params?.maxAttempts ?? 4;
-  const amount = params?.amount ?? mandate?.amount ?? 1000;
-  const balanceVolatility = params?.balanceVolatility ?? mandate?.balance_volatility ?? 0.2;
+  const amount = observation?.amount ?? params?.amount ?? mandate?.amount ?? 1000;
+  const balanceVolatility = params?.balanceVolatility ?? mandate?.balance_volatility;
   const category = params?.category ?? failure?.category ?? 'soft';
   const retryEligible = params?.retryEligible ?? failure?.retryEligible ?? true;
   const declineCode = params?.declineCode ?? failure?.code ?? failure?.declineCode ?? null;
@@ -357,8 +355,10 @@ export async function proposeSmartRecoveryAction(params = {}) {
   if (!Number.isFinite(amount) || amount < 100 || amount > 50000) {
     throw new Error(`smartAgent: amount must be a finite number in [100, 50000], got ${amount}`);
   }
-  if (!Number.isFinite(balanceVolatility) || balanceVolatility < 0 || balanceVolatility > 1) {
-    throw new Error(`smartAgent: balanceVolatility must be in [0, 1], got ${balanceVolatility}`);
+  if (balanceVolatility !== undefined) {
+    if (!Number.isFinite(balanceVolatility) || balanceVolatility < 0 || balanceVolatility > 1) {
+      throw new Error(`smartAgent: balanceVolatility must be in [0, 1], got ${balanceVolatility}`);
+    }
   }
   if (!category || !['soft', 'hard', 'unknown'].includes(category)) {
     throw new Error(`smartAgent: category must be 'soft', 'hard', or 'unknown', got "${category}"`);
@@ -368,13 +368,13 @@ export async function proposeSmartRecoveryAction(params = {}) {
   }
 
   // ── Context object (shared by prompt builder and fallback) ────────────────
+  // Strictly allowlisted context — hidden traits (balanceDynamics, salaryDay) MUST NOT leak into prompt
 
   const context = {
     mandateId,
     attemptsUsed,
     maxAttempts,
     amount,
-    balanceVolatility,
     category,
     retryEligible,
     declineCode,

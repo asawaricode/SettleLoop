@@ -1,261 +1,173 @@
 // src/simulators/paymentSimulator.js
 //
-// Pure, deterministic Payment Simulator.
+// Phase 4: Causal Payment Simulator.
 //
-// Responsibilities:
-//   - Receive simulation inputs.
-//   - Return a deterministic payment result.
+// Replaces the non-causal hash-only thresholding with an explicit causal outcome
+// model driven by latent customer balance dynamics, bank availability, and decline taxonomy.
 //
-// Explicitly does NOT:
-//   - Import or touch Supabase.
-//   - Read or write the database.
-//   - Call any RPC.
-//   - Use Math.random() or any non-deterministic source.
-//   - Accept or inspect experiment_arm.
-//   - Use currentDay to influence the payment outcome.
-//   - Enforce the 4-attempt system limit (that belongs to the RPC layer).
+// CAUSAL OUTCOME TAXONOMY:
+// Every simulated payment attempt produces an outcome from explicit causes:
+//   1. 'hard_decline'            - Permanent account/mandate revocation (unrecoverable)
+//   2. 'unknown_decline'         - Gateway timeout or unmapped error (non-retryable)
+//   3. 'transient_bank_failure'  - Core banking infrastructure temporarily degraded (soft)
+//   4. 'insufficient_funds'      - Available balance on simulation day < mandate amount (soft)
+//   5. 'successful_recovery'     - Bank available + available balance >= amount (success)
+//
+// DETERMINISTIC SHARED SEEDED NOISE:
+// Uses noise(seed, mandate, day, slot, purpose) so all arms receive identical
+// simulated luck under paired comparisons.
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Synthetic decline codes
-// Clearly labelled as simulation-only identifiers.
-// ─────────────────────────────────────────────────────────────────────────────
-const SOFT_CODES    = ["SIM_SOFT_001", "SIM_SOFT_002"];
-const HARD_CODES    = ["SIM_HARD_001", "SIM_HARD_002"];
-const UNKNOWN_CODES = ["SIM_UNKNOWN_001"];
+import { noise } from './noise.js';
+import { deriveHiddenTraits } from './hiddenTraits.js';
+import { buildObservation } from './observation.js';
+import { SIMULATOR_CONFIG } from '../config/simulatorConfig.js';
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Deterministic hash
-//
-// djb2-inspired string hasher that produces a stable uint32.
-// Runs entirely in JavaScript integer arithmetic — no external package needed.
-// ─────────────────────────────────────────────────────────────────────────────
+export { noise, deriveHiddenTraits, buildObservation, SIMULATOR_CONFIG };
 
 /**
- * Accumulate one character code into a running djb2 hash.
- * Uses Math.imul for safe 32-bit integer multiplication.
- *
- * @param {number} h  - running hash (uint32)
- * @param {number} c  - character code
- * @returns {number}  - updated hash (uint32)
+ * Validates inputs for payment simulation.
  */
-function djb2Step(h, c) {
-  // hash = hash * 31 + charCode  (classic polynomial rolling hash)
-  return (Math.imul(h, 31) + c) >>> 0;
-}
-
-/**
- * Hash a string into a uint32 using djb2.
- *
- * @param {string} str
- * @param {number} [seed=5381] - initial hash value
- * @returns {number} uint32
- */
-function hashString(str, seed = 5381) {
-  let h = seed >>> 0;
-  for (let i = 0; i < str.length; i++) {
-    h = djb2Step(h, str.charCodeAt(i));
-  }
-  return h;
-}
-
-/**
- * Derive a stable uint32 from all simulation inputs that should affect the
- * payment outcome.
- *
- * Inputs incorporated:
- *   seed              — simulation-level randomness anchor
- *   mandateId         — deterministic synthetic identifier (mandates.mandate_id or mandates.id fallback)
- *   attemptNumber     — which attempt this is (must materially vary the result)
- *   amount            — payment amount (float, 100–50000)
- *   balanceVolatility — account balance variability (float, 0.0000–1.0000)
- *   incomeDayOfMonth  — integer 1–28
- *
- * Inputs deliberately excluded:
- *   experiment_arm  — must not influence payment outcome
- *   currentDay      — must not influence payment outcome
- *
- * @returns {number} uint32
- */
-function deriveHash(seed, mandateId, attemptNumber, amount, balanceVolatility, incomeDayOfMonth) {
-  // Build a canonical key string from all relevant inputs.
-  // String concatenation with fixed delimiters prevents collisions between
-  // adjacent numeric fields (e.g., seed=1,attempt=23 vs seed=12,attempt=3).
-  const key = [
-    String(seed >>> 0),
-    mandateId,
-    String(attemptNumber),
-    amount.toFixed(2),
-    balanceVolatility.toFixed(4),
-    String(incomeDayOfMonth),
-  ].join("|");
-
-  return hashString(key);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Outcome distribution
-//
-// The uint32 hash is mapped onto the [0, 1) interval (h / 2^32) and bucketed.
-//
-// Target: ~35-40 % first-attempt failure rate across a large diverse dataset.
-//
-// Bucket thresholds (cumulative probability):
-//
-//   [0.00, 0.60)  → success            (60 %)
-//   [0.60, 0.75)  → soft failure       (15 %)
-//   [0.75, 0.88)  → hard failure       (13 %)
-//   [0.88, 1.00)  → unknown failure    (12 %)
-//
-// Total failure ≈ 40 %, which is within the 30–50 % target.
-//
-// Per-attempt variation:
-//   The attempt number is incorporated into the key, so the uint32 (and thus
-//   bucket) changes per attempt. A mandate that fails on attempt 1 may succeed
-//   on attempt 2, 3, etc.
-//
-// Higher balanceVolatility (0–1) nudges the effective threshold slightly
-// downward, making unstable accounts a bit more prone to soft failures.
-// The nudge is bounded so it never overrides hard/unknown outcomes.
-// ─────────────────────────────────────────────────────────────────────────────
-
-const P_SUCCESS      = 0.60;   // [0, 0.60)
-const P_SOFT_END     = 0.75;   // [0.60, 0.75)
-const P_HARD_END     = 0.88;   // [0.75, 0.88)
-// unknown:                        [0.88, 1.00)
-
-// balanceVolatility can shift the success threshold down by at most 0.08
-// (i.e., a mandate with volatility=1.0 has a success probability of 0.52).
-const VOLATILITY_WEIGHT = 0.08;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Input validation
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Validate all simulator inputs and throw clearly if anything is wrong.
- * Ranges mirror the actual values produced by syntheticDataGenerator.js.
- */
-function validateInputs({ seed, mandateId, attemptNumber, amount, balanceVolatility, incomeDayOfMonth }) {
+function validateSimulatorInputs({ seed, mandateId, attemptNumber, amount }) {
   if (seed === undefined || seed === null || !Number.isFinite(Number(seed))) {
-    throw new Error("paymentSimulator: seed must be a finite number");
+    throw new Error('paymentSimulator: seed must be a finite number');
   }
-  if (!mandateId || typeof mandateId !== "string" || mandateId.trim() === "") {
-    throw new Error("paymentSimulator: mandateId must be a non-empty string");
+  if (!mandateId || typeof mandateId !== 'string' || mandateId.trim() === '') {
+    throw new Error('paymentSimulator: mandateId must be a non-empty string');
   }
   if (!Number.isInteger(attemptNumber) || attemptNumber < 1) {
-    throw new Error("paymentSimulator: attemptNumber must be a positive integer");
+    throw new Error('paymentSimulator: attemptNumber must be a positive integer');
   }
   if (!Number.isFinite(amount) || amount < 100 || amount > 50000) {
     throw new Error(`paymentSimulator: amount must be a finite number in [100, 50000], got ${amount}`);
   }
-  if (!Number.isFinite(balanceVolatility) || balanceVolatility < 0 || balanceVolatility > 1) {
-    throw new Error(`paymentSimulator: balanceVolatility must be in [0, 1], got ${balanceVolatility}`);
-  }
-  if (!Number.isInteger(incomeDayOfMonth) || incomeDayOfMonth < 1 || incomeDayOfMonth > 28) {
-    throw new Error(`paymentSimulator: incomeDayOfMonth must be an integer in [1, 28], got ${incomeDayOfMonth}`);
-  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Public API
-// ─────────────────────────────────────────────────────────────────────────────
-
 /**
- * Simulate the payment result for one attempt on one mandate.
- *
- * This is a pure function:
- *   - No Supabase imports or calls.
- *   - No Math.random().
- *   - No experiment_arm dependency.
- *   - No currentDay dependency.
- *   - Same inputs always return the same output.
+ * Simulates a payment attempt using the Causal Outcome Model.
  *
  * @param {object} params
- * @param {number} params.seed              - Run's random_seed (uint32).
- * @param {string} params.mandateId         - Deterministic mandate identifier (mandates.mandate_id or mandates.id fallback).
- * @param {number} params.attemptNumber     - 1-based attempt counter (positive integer).
- * @param {number} params.amount            - Payment amount in INR, float in [100, 50000].
- * @param {number} params.balanceVolatility - Account balance variability, float in [0, 1].
- * @param {number} params.incomeDayOfMonth  - Customer's income day, integer in [1, 28].
+ * @param {number} params.seed                  - Simulation run random_seed (uint32)
+ * @param {object} [params.mandate]             - Mandate record (optional if flat params passed)
+ * @param {string} [params.mandateId]           - Mandate identifier
+ * @param {number} params.attemptNumber         - 1-based attempt counter (positive integer)
+ * @param {number} [params.amount]              - Mandate amount in INR
+ * @param {number} [params.currentDay=1]        - Virtual simulation clock day
+ * @param {string|number} [params.slot='default'] - Execution slot (e.g. '14:00', 'morning')
+ * @param {number} [params.balanceVolatility]   - Hidden volatility trait (if passing raw record)
+ * @param {number} [params.incomeDayOfMonth]    - Hidden salary day trait (if passing raw record)
  *
  * @returns {{
- *   outcome:         'success' | 'failure',
- *   declineCode:     string | null,
+ *   outcome: 'success' | 'failure',
+ *   declineCode: string | null,
  *   declineCategory: 'soft' | 'hard' | 'unknown' | null,
- *   retryEligible:   boolean | null
+ *   retryEligible: boolean | null,
+ *   cause: 'successful_recovery' | 'transient_bank_failure' | 'insufficient_funds' | 'hard_decline' | 'unknown_decline',
+ *   availableBalance?: number
  * }}
  */
-export function simulatePayment({
-  seed,
-  mandateId,
-  attemptNumber,
-  amount,
-  balanceVolatility,
-  incomeDayOfMonth,
-}) {
-  // 1. Validate inputs
-  validateInputs({ seed, mandateId, attemptNumber, amount, balanceVolatility, incomeDayOfMonth });
+export function simulatePayment(params = {}) {
+  const mandateObj = params.mandate ?? {};
+  const mandateId = params.mandateId ?? mandateObj.mandate_id ?? mandateObj.id;
+  const attemptNumber = Number(params.attemptNumber ?? 1);
+  const amount = Number(params.amount ?? mandateObj.amount ?? 1000);
+  const seed = Number(params.seed);
+  const currentDay = Number(params.currentDay ?? params.day ?? 1);
+  const slot = params.slot ?? 'default';
 
-  // 2. Derive a stable uint32 from all relevant inputs
-  const h = deriveHash(
-    seed,
-    mandateId,
-    attemptNumber,
+  // 1. Validate required inputs
+  validateSimulatorInputs({ seed, mandateId, attemptNumber, amount });
+
+  // 2. Derive hidden traits (latent parameters: salaryDay, balanceDynamics, bankReliability)
+  const inputForTraits = params.mandate ?? {
+    mandate_id: mandateId,
     amount,
-    balanceVolatility,
-    incomeDayOfMonth
-  );
+    balance_volatility: params.balanceVolatility,
+    income_day_of_month: params.incomeDayOfMonth,
+    salaryDay: params.salaryDay,
+    bankReliability: params.bankReliability,
+    bank_id: params.bankId,
+  };
 
-  // 3. Map to [0, 1)
-  const p = h / 4294967296;
+  const traits = deriveHiddenTraits(seed, inputForTraits);
 
-  // 4. Apply balanceVolatility nudge to the success threshold.
-  //    Higher volatility → slightly lower success probability.
-  //    Nudge is bounded: it only affects the success/soft boundary,
-  //    not hard or unknown thresholds.
-  const successThreshold = P_SUCCESS - balanceVolatility * VOLATILITY_WEIGHT;
+  // ── CAUSAL EVALUATION ─────────────────────────────────────────────────────
 
-  // 5. Pick outcome bucket
-  if (p < successThreshold) {
-    // ── SUCCESS ───────────────────────────────────────────────────────────
+  // Step A: Other Decline Taxonomy (Hard / Unknown Decline)
+  // Evaluates independent permanent failure causes (e.g. account closed, mandate cancelled)
+  const otherNoise = noise(seed, traits.mandateId, currentDay, slot, 'other_decline');
+  if (otherNoise < SIMULATOR_CONFIG.OTHER_DECLINES.HARD_DECLINE_RATE) {
     return {
-      outcome: "success",
-      declineCode: null,
-      declineCategory: null,
-      retryEligible: null,
-    };
-  }
-
-  if (p < P_SOFT_END) {
-    // ── SOFT FAILURE ──────────────────────────────────────────────────────
-    // Use secondary hash bits to pick among the soft codes.
-    const codeIndex = h % SOFT_CODES.length;
-    return {
-      outcome: "failure",
-      declineCode: SOFT_CODES[codeIndex],
-      declineCategory: "soft",
-      retryEligible: true,
-    };
-  }
-
-  if (p < P_HARD_END) {
-    // ── HARD FAILURE ──────────────────────────────────────────────────────
-    const codeIndex = h % HARD_CODES.length;
-    return {
-      outcome: "failure",
-      declineCode: HARD_CODES[codeIndex],
-      declineCategory: "hard",
+      outcome: 'failure',
+      declineCode: SIMULATOR_CONFIG.OTHER_DECLINES.HARD_DECLINE_CODE,
+      declineCategory: 'hard',
       retryEligible: false,
+      cause: 'hard_decline',
     };
   }
 
-  // ── UNKNOWN FAILURE ───────────────────────────────────────────────────────
-  // Treated conservatively: retryEligible = false.
-  const codeIndex = h % UNKNOWN_CODES.length;
+  if (
+    otherNoise <
+    SIMULATOR_CONFIG.OTHER_DECLINES.HARD_DECLINE_RATE +
+      SIMULATOR_CONFIG.OTHER_DECLINES.UNKNOWN_DECLINE_RATE
+  ) {
+    return {
+      outcome: 'failure',
+      declineCode: SIMULATOR_CONFIG.OTHER_DECLINES.UNKNOWN_DECLINE_CODE,
+      declineCategory: 'unknown',
+      retryEligible: false,
+      cause: 'unknown_decline',
+    };
+  }
+
+  // Step B: Transient Bank Availability
+  // Evaluates whether the banking channel or NPCI/issuer switch is experiencing a transient outage
+  const bankNoise = noise(seed, traits.mandateId, currentDay, slot, 'bank_uptime');
+  if (bankNoise > traits.bankReliability) {
+    return {
+      outcome: 'failure',
+      declineCode: SIMULATOR_CONFIG.BANK.DOWN_DECLINE_CODE,
+      declineCategory: 'soft',
+      retryEligible: true,
+      cause: 'transient_bank_failure',
+    };
+  }
+
+  // Step C: Causal Customer Balance Dynamics
+  // Models salary credit jumps, day-to-day spending drift, and volatility noise shocks
+  const daysSinceSalary = (currentDay - traits.salaryDay + 28) % 28;
+  const salaryJump = traits.amount * traits.balanceDynamics.salaryMultiplier;
+  const spent = daysSinceSalary * (traits.amount * traits.balanceDynamics.dailySpendFraction);
+  const baselineBuffer = traits.amount * traits.balanceDynamics.baselineBufferFraction;
+
+  const shockNoise = noise(seed, traits.mandateId, currentDay, slot, 'balance_shock');
+  const shock =
+    (shockNoise - 0.5) *
+    2 *
+    (traits.balanceDynamics.volatility *
+      traits.balanceDynamics.volatilityNoiseScale *
+      salaryJump);
+
+  const availableBalance = Math.max(0, salaryJump - spent + baselineBuffer + shock);
+
+  if (availableBalance < traits.amount) {
+    return {
+      outcome: 'failure',
+      declineCode: SIMULATOR_CONFIG.BALANCE.INSUFFICIENT_FUNDS_CODE,
+      declineCategory: 'soft',
+      retryEligible: true,
+      cause: 'insufficient_funds',
+      availableBalance,
+    };
+  }
+
+  // Step D: Successful Debit / Recovery
+  // Bank is operational, mandate is in good standing, and customer has sufficient balance
   return {
-    outcome: "failure",
-    declineCode: UNKNOWN_CODES[codeIndex],
-    declineCategory: "unknown",
-    retryEligible: false,
+    outcome: 'success',
+    declineCode: null,
+    declineCategory: null,
+    retryEligible: null,
+    cause: 'successful_recovery',
+    availableBalance,
   };
 }

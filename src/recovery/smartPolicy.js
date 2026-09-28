@@ -34,6 +34,7 @@ import { classifyFailure } from './failureClassifier.js';
 import { proposeSmartRecoveryAction } from './smartAgent.js';
 import { validateGuardrails } from './guardrails.js';
 import { requestHumanApproval } from './humanApproval.js';
+import { buildObservation } from '../simulators/observation.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants
@@ -110,7 +111,7 @@ async function executePaymentAttempt({ runId, mandate, currentDay, seed, channel
     return { attempt, simResult: null, updatedMandate: existingMandate };
   }
 
-  // 3. Run payment simulator (NEVER pass currentDay or experiment_arm)
+  // 3. Run payment simulator with simulation clock day
   const simMandateId =
     mandate.mandate_id && /^M-\d+$/.test(mandate.mandate_id)
       ? mandate.mandate_id
@@ -121,8 +122,7 @@ async function executePaymentAttempt({ runId, mandate, currentDay, seed, channel
     mandateId: simMandateId,
     attemptNumber: attempt.attempt_number,
     amount: mandate.amount,
-    balanceVolatility: mandate.balance_volatility,
-    incomeDayOfMonth: mandate.income_day_of_month,
+    currentDay,
   });
 
   // 4. complete_attempt RPC
@@ -365,15 +365,17 @@ async function runSmartDecision({
     return await exhaustMandate({ runId, mandate, currentDay, attempt: latestFailure });
   }
 
-  // ── Call Smart Agent ──────────────────────────────────────────────────────
+  // ── Call Smart Agent via strictly allowlisted Observation boundary ────────
+  const observation = buildObservation({
+    mandate,
+    currentDay,
+    attemptHistory: latestFailure ? [latestFailure] : [],
+  });
+
   let aiProposal;
   try {
     aiProposal = await proposeSmartRecoveryAction({
-      mandateId: mandate.mandate_id || mandate.id,
-      attemptsUsed: mandate.attempts_used,
-      maxAttempts: MAX_SMART_ATTEMPTS,
-      amount: mandate.amount,
-      balanceVolatility: mandate.balance_volatility,
+      observation,
       category: classification.category,
       retryEligible: classification.retryEligible,
       declineCode: classification.declineCode,
