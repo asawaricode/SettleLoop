@@ -22,3 +22,14 @@ export {
   expireHumanApprovals,
   DEFAULT_APPROVAL_WINDOW_DAYS,
 } from './humanApproval.js';
+export {
+  validateProposalStructure,
+  generateDeterministicFallback,
+  GeminiProposalSchema,
+} from './proposalValidator.js';
+export {
+  setMockLLMHandler,
+  resetMockLLMHandler,
+  getLLMMode,
+} from './smartAgent.js';
+

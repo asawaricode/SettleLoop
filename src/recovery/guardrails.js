@@ -20,6 +20,13 @@
 // Constants
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { isPeakTime } from '../utils/peakWindow.js';
+import {
+  retriesInNonPeakSlots,
+  preDebitNoticeMinHours,
+  PEAK_TIMEZONE,
+} from '../config/recoveryPolicy.js';
+
 export const MAX_ATTEMPTS = 4;
 export const MAX_DELAY_DAYS = 7;
 export const CONFIDENCE_THRESHOLD = 0.70;
@@ -227,6 +234,69 @@ export function validateGuardrails(arg1, arg2) {
         `Proposal confidence (${confidence}) is below conservative threshold of ${CONFIDENCE_THRESHOLD}.`
       );
     }
+
+    // Rule 9: Non-Peak Slot Enforcement & Dispatch Time Validity
+    if (retriesInNonPeakSlots) {
+      const slot = proposal?.timeSlot;
+      const dispatchTime = proposal?.dispatchTime;
+      if (slot || dispatchTime) {
+        let dateToCheck;
+        if (dispatchTime) {
+          const parsed = new Date(dispatchTime);
+          if (isNaN(parsed.getTime())) {
+            hasStructuralViolation = true;
+            reasons.push(
+              `Invalid dispatchTime: "${dispatchTime}" cannot be parsed as a valid date.`
+            );
+          } else {
+            const currentMs = context?.currentTime
+              ? new Date(context.currentTime).getTime()
+              : Date.now();
+            if (parsed.getTime() < currentMs) {
+              hasStructuralViolation = true;
+              reasons.push(
+                `Past dispatch time rejected: proposed dispatchTime (${dispatchTime}) is in the past.`
+              );
+            }
+            dateToCheck = parsed;
+          }
+        } else if (slot && typeof slot === 'string' && slot.includes(':')) {
+          const [h, m] = slot.split(':').map(Number);
+          if (!isNaN(h) && !isNaN(m)) {
+            const now = new Date();
+            const utcMidnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+            const istOffsetMs = (5 * 60 + 30) * 60 * 1000;
+            dateToCheck = new Date(utcMidnight - istOffsetMs + (h * 60 + m) * 60 * 1000);
+          }
+        }
+        if (dateToCheck && !isNaN(dateToCheck.getTime()) && isPeakTime(dateToCheck, { timezone: PEAK_TIMEZONE })) {
+          hasStructuralViolation = true;
+          reasons.push(
+            `Peak-hour dispatch rejected: proposed slot falls within NPCI-restricted peak window (${PEAK_TIMEZONE}).`
+          );
+        }
+      }
+    }
+
+    // Rule 10: Pre-Debit Notice Gap (min 24h)
+    const noticeTime =
+      context?.preDebitNoticeTime ??
+      context?.noticeTime ??
+      context?.mandate?.pre_debit_notice_time;
+    const dispatchTime = proposal?.dispatchTime ?? context?.dispatchTime;
+    if (noticeTime && dispatchTime) {
+      const noticeMs = new Date(noticeTime).getTime();
+      const dispatchMs = new Date(dispatchTime).getTime();
+      if (!isNaN(noticeMs) && !isNaN(dispatchMs)) {
+        const gapHours = (dispatchMs - noticeMs) / (3600 * 1000);
+        if (gapHours < preDebitNoticeMinHours) {
+          hasStructuralViolation = true;
+          reasons.push(
+            `Pre-debit notice gap violation: dispatch must be >= ${preDebitNoticeMinHours} hours after notice, got ${gapHours.toFixed(1)}h.`
+          );
+        }
+      }
+    }
   }
 
   // ── 7. Precedence Hierarchy Resolution ────────────────────────────────────
@@ -255,6 +325,7 @@ export function validateGuardrails(arg1, arg2) {
   return {
     allowed,
     action: finalAction,
+    finalAction,
     reasons,
   };
 }

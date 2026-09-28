@@ -29,6 +29,39 @@ import express from 'express';
 import { supabase } from '../config/supabase.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Known Webhook Events & Effect Handlers
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const KNOWN_WEBHOOK_EVENTS = Object.freeze([
+  'payment.failed',
+  'payment.authorized',
+  'payment.captured',
+  'order.paid',
+  'subscription.charged',
+  'subscription.halted',
+  'subscription.cancelled',
+  'subscription.paused',
+  'subscription.resumed',
+  'payment.dispute.created',
+]);
+
+let webhookEffectHandler = null;
+
+/**
+ * Register an effect handler to be executed atomically with webhook receipt.
+ * If the handler throws, the webhook_events insertion is rolled back.
+ * Used for testing transactional rollback and extending webhook processing.
+ */
+export function setWebhookEffectHandler(handler) {
+  webhookEffectHandler = handler;
+}
+
+/** Reset the webhook effect handler back to null. */
+export function resetWebhookEffectHandler() {
+  webhookEffectHandler = null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Internal: HMAC-SHA256 signature verification
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -143,7 +176,7 @@ webhookRouter.post(
     if (insertErr) {
       // 23505 = unique_violation (duplicate event_id)
       if (insertErr.code === '23505') {
-        // Duplicate — return 200 without further action.
+        // Duplicate — return 200 without further action (no-op).
         return res.status(200).json({
           received:   true,
           duplicate:  true,
@@ -156,22 +189,44 @@ webhookRouter.post(
       return res.status(500).json({ error: 'Failed to store webhook event' });
     }
 
-    // ── 6. Write audit log (isolated: not linked to any simulation run) ──────
-    //    audit_logs.run_id has a FK to simulation_runs; we cannot use a null.
-    //    We log to a dedicated real_webhook_audit_logs table or, since the FK
-    //    prevents null run_id, we store the event reference in the
-    //    webhook_events.payload which is already stored.
-    //    audit_logs REQUIRES run_id (FK, NOT NULL) — so we skip logAudit here
-    //    and instead embed audit-equivalent data in the webhook_events payload
-    //    which is already stored with full event detail.
-    //
-    //    NOTE: We intentionally do NOT call logAudit because:
-    //      1. audit_logs.run_id is NOT NULL with a FK to simulation_runs.
-    //      2. Webhook events are NOT associated with any simulation run.
-    //      3. Inserting a fake run_id would corrupt simulation data integrity.
-    //    The webhook_events row IS the audit record for inbound webhooks.
+    // ── 6. Unknown event type handling ──────────────────────────────────────
+    //    Unknown event types return 200 / no-op without creating recovery effects.
+    const isKnownEvent = KNOWN_WEBHOOK_EVENTS.includes(eventType);
+    if (!isKnownEvent) {
+      return res.status(200).json({
+        received:         true,
+        duplicate:        false,
+        ignored:          true,
+        event_id:         eventId.trim(),
+        event_type:       eventType,
+        webhook_event_id: inserted.id,
+        message:          'Unknown event type ignored with zero recovery side effects',
+      });
+    }
 
-    // ── 7. Return 200 ────────────────────────────────────────────────────────
+    // ── 7. Atomic Effect Execution & Rollback ───────────────────────────────
+    //    If an effect handler is registered, execute it. If processing fails,
+    //    roll back the inserted webhook_events record so no partial state remains.
+    if (webhookEffectHandler) {
+      try {
+        await webhookEffectHandler({
+          eventPayload,
+          eventId: eventId.trim(),
+          eventType,
+          webhookEventId: inserted.id,
+        });
+      } catch (effectErr) {
+        // Rollback: atomically delete inserted event so no partial effect remains
+        await supabase.from('webhook_events').delete().eq('id', inserted.id);
+        console.error('[razorpayWebhook] Event processing effect failed, rolled back:', effectErr.message);
+        return res.status(500).json({
+          error:   'Event processing failed, transaction rolled back',
+          details: effectErr.message,
+        });
+      }
+    }
+
+    // ── 8. Return 200 ────────────────────────────────────────────────────────
     return res.status(200).json({
       received:           true,
       duplicate:          false,

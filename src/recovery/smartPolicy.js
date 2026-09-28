@@ -403,7 +403,21 @@ async function runSmartDecision({
     });
   }
 
-  // ── Audit: AI proposal ────────────────────────────────────────────────────
+  // ── Audit: AI proposal or Schema Validation Failure ───────────────────────
+  if (aiProposal.failureCategory === 'schema_validation_failure') {
+    await logAudit({
+      runId,
+      mandateId: mandate.id,
+      attemptId: latestFailure?.id ?? null,
+      day: currentDay,
+      actor: 'smart_agent',
+      decisionType: 'schema_validation_failure',
+      input: { category: classification.category, attemptsUsed: mandate.attempts_used },
+      output: { action: aiProposal.action, fallback: true, errors: aiProposal.validationErrors },
+      reasoning: 'Gemini output failed structural schema validation; applied deterministic fallback.',
+    });
+  }
+
   await logAudit({
     runId,
     mandateId: mandate.id,
@@ -424,9 +438,11 @@ async function runSmartDecision({
     action: aiProposal.action,
     delayDays: aiProposal.retryDelayDays,
     retryDelayDays: aiProposal.retryDelayDays,
-    channel: 'auto_debit',          // Smart always uses auto_debit in this simulation
-    discountPercent: 0,
-    confidence: 0.8,                // SmartAgent fallback has no confidence field; provide default
+    timeSlot: aiProposal.timeSlot,
+    dispatchTime: aiProposal.dispatchTime,
+    channel: aiProposal.channel || 'auto_debit',
+    discountPercent: aiProposal.discountPercent ?? 0,
+    confidence: aiProposal.confidence ?? 0.8,
     reasoning: aiProposal.reasoning || '',
   };
 
@@ -446,7 +462,21 @@ async function runSmartDecision({
 
   const guardrailResult = validateGuardrails(guardrailProposal, guardrailContext);
 
-  // ── Audit: Guardrails result ──────────────────────────────────────────────
+  // ── Audit: Guardrail Rejection vs Guardrail Decision ──────────────────────
+  if (!guardrailResult.allowed) {
+    await logAudit({
+      runId,
+      mandateId: mandate.id,
+      attemptId: latestFailure?.id ?? null,
+      day: currentDay,
+      actor: 'guardrails',
+      decisionType: 'guardrail_rejection',
+      input: { proposedAction: aiProposal.action, reasons: guardrailResult.reasons },
+      output: { allowed: false, finalAction: guardrailResult.action },
+      reasoning: `Proposal rejected by domain guardrails: ${guardrailResult.reasons.join('; ')}`,
+    });
+  }
+
   await logAudit({
     runId,
     mandateId: mandate.id,
