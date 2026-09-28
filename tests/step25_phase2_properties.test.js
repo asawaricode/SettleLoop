@@ -46,6 +46,8 @@ import {
 
 import {
   MAX_ATTEMPTS,
+  maxAttemptsPerCycle,
+  maxAttemptsPerMandate,
   preDebitNoticeMinHours,
   minRetryGapHours,
   freshNoticePerRetry,
@@ -115,11 +117,11 @@ function istTime(hour, minute) {
 
 describe('Step 25 — Phase 2 Property Tests', () => {
 
-  // ── 1. Four-attempt ceiling ────────────────────────────────────────────────
-  it('1. Guardrails: attempts never exceed 4 per mandate (property)', () => {
+  // ── 1. Four-attempt ceiling per cycle ─────────────────────────────────────
+  it('1. Guardrails: attempts never exceed 4 per cycle (maxAttemptsPerCycle) (property)', () => {
     fc.assert(
       fc.property(
-        fc.integer({ min: MAX_ATTEMPTS, max: MAX_ATTEMPTS + 20 }),
+        fc.integer({ min: maxAttemptsPerCycle, max: maxAttemptsPerCycle + 20 }),
         (attemptsUsed) => {
           const ctx = makeValidRetryContext(attemptsUsed);
           const proposal = makeValidRetryProposal();
@@ -139,10 +141,10 @@ describe('Step 25 — Phase 2 Property Tests', () => {
   });
 
   // ── 2. Attempts below cap are guardable-allowed ───────────────────────────
-  it('2. Guardrails: attempts below cap are not blocked by ceiling alone (property)', () => {
+  it('2. Guardrails: attempts below cycle cap are not blocked by ceiling alone (property)', () => {
     fc.assert(
       fc.property(
-        fc.integer({ min: 0, max: MAX_ATTEMPTS - 1 }),
+        fc.integer({ min: 0, max: maxAttemptsPerCycle - 1 }),
         (attemptsUsed) => {
           const ctx = makeValidRetryContext(attemptsUsed);
           const proposal = makeValidRetryProposal(1);
@@ -159,11 +161,13 @@ describe('Step 25 — Phase 2 Property Tests', () => {
     );
   });
 
-  // ── 3. MAX_ATTEMPTS constant integrity ────────────────────────────────────
-  it('3. MAX_ATTEMPTS is 4 and matches MAX_GUARDRAIL_ATTEMPTS', () => {
+  // ── 3. maxAttemptsPerCycle constant integrity ─────────────────────────────
+  it('3. maxAttemptsPerCycle is 4 and matches MAX_GUARDRAIL_ATTEMPTS', () => {
+    assert.equal(maxAttemptsPerCycle, 4);
     assert.equal(MAX_ATTEMPTS, 4);
     assert.equal(MAX_GUARDRAIL_ATTEMPTS, 4);
-    assert.equal(RECOVERY_POLICY.MAX_ATTEMPTS, 4);
+    assert.equal(RECOVERY_POLICY.maxAttemptsPerCycle, 4);
+    assert.equal(RECOVERY_POLICY.maxAttemptsPerMandate, 4);
   });
 
   // ── 4. Peak windows match NPCI-sourced values ─────────────────────────────
@@ -510,6 +514,112 @@ describe('Step 25 — Phase 2 Property Tests', () => {
         m.attempts_used <= 4,
         `attempts_used ${m.attempts_used} exceeds cap of 4`
       );
+    });
+
+    it('20c. DB: terminal cycle cannot accept another attempt (enforced at DB RPC boundary)', async () => {
+      // Create a mandate representing a terminal cycle (recovered)
+      const { data: termM, error: termErr } = await supabase
+        .from('mandates')
+        .insert({
+          run_id: runId,
+          mandate_id: 'M-PHASE2-TERM-TEST',
+          amount: 500,
+          income_day_of_month: 1,
+          balance_volatility: 0.1,
+          contact_consent: true,
+          experiment_arm: 'baseline',
+          status: 'recovered',
+          attempts_used: 1,
+          first_due_day: 1,
+          next_action: 'none',
+          next_action_day: null,
+          created_day: 1,
+        })
+        .select('id')
+        .single();
+
+      assert.ok(!termErr && termM, `Failed to create terminal mandate: ${termErr?.message}`);
+
+      try {
+        // Attempt to execute an attempt on the terminal cycle
+        const { data: attId, error: execErr } = await supabase.rpc('execute_attempt', {
+          p_run_id: runId,
+          p_mandate_id: termM.id,
+          p_day: 1,
+          p_channel: 'auto_debit',
+          p_idempotency_key: `term-attempt-test:${termM.id}:1`,
+        });
+
+        assert.equal(attId, null, 'No attempt ID should be returned for terminal cycle');
+        assert.ok(execErr, 'DB must return an error when attempting on terminal cycle');
+        assert.ok(
+          execErr.message.includes('recovered') || execErr.message.toLowerCase().includes('cannot execute'),
+          `Unexpected error message: ${execErr.message}`
+        );
+
+        // Verify zero attempts in DB for this terminal cycle
+        const { data: atts } = await supabase
+          .from('attempts')
+          .select('id')
+          .eq('mandate_id', termM.id);
+        assert.equal(atts?.length || 0, 0, 'Zero attempts must exist for rejected terminal cycle');
+      } finally {
+        await supabase.from('attempts').delete().eq('mandate_id', termM.id);
+        await supabase.from('mandates').delete().eq('id', termM.id);
+      }
+    });
+
+    it('20d. DB: failed cycle (status=exhausted) cannot accept further attempts and does not cancel mandate', async () => {
+      // Create a mandate representing an exhausted cycle (failed cycle)
+      const { data: exM, error: exErr } = await supabase
+        .from('mandates')
+        .insert({
+          run_id: runId,
+          mandate_id: 'M-PHASE2-EXHAUSTED-TEST',
+          amount: 500,
+          income_day_of_month: 1,
+          balance_volatility: 0.1,
+          contact_consent: true,
+          experiment_arm: 'baseline',
+          status: 'exhausted',
+          terminal_reason: 'attempts_exhausted',
+          attempts_used: 4,
+          first_due_day: 1,
+          next_action: 'none',
+          next_action_day: null,
+          created_day: 1,
+        })
+        .select('id')
+        .single();
+
+      assert.ok(!exErr && exM, `Failed to create exhausted mandate: ${exErr?.message}`);
+
+      try {
+        // Attempting a 5th attempt on the exhausted cycle must be rejected
+        const { data: attId, error: execErr } = await supabase.rpc('execute_attempt', {
+          p_run_id: runId,
+          p_mandate_id: exM.id,
+          p_day: 1,
+          p_channel: 'auto_debit',
+          p_idempotency_key: `exhausted-attempt-test:${exM.id}:5`,
+        });
+
+        assert.equal(attId, null, 'No attempt ID should be returned for exhausted cycle');
+        assert.ok(execErr, 'DB must reject attempt on exhausted cycle');
+
+        // Check mandate status remains 'exhausted' (failed cycle != stood_down / cancelled)
+        const { data: freshM } = await supabase
+          .from('mandates')
+          .select('status, terminal_reason')
+          .eq('id', exM.id)
+          .single();
+
+        assert.equal(freshM.status, 'exhausted');
+        assert.notEqual(freshM.status, 'stood_down', 'Failed cycle must NOT cancel/stand down the mandate');
+      } finally {
+        await supabase.from('attempts').delete().eq('mandate_id', exM.id);
+        await supabase.from('mandates').delete().eq('id', exM.id);
+      }
     });
   });
 

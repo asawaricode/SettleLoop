@@ -39,14 +39,18 @@
 // §1  Attempt cap
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Maximum total attempts per mandate (1 initial + 3 retries = 4).
- *  ASSUMED: Rule D (NPCI/UPI/OC/215A/2025-26 AutoPay retry limit) is not
- *  verified from an accessible primary-source image extract.
- *  This value is implemented as project policy.
+/** Maximum total attempts per cycle (1 initial attempt + 3 retries = 4 max).
+ *  ASSUMED: Rule D (NPCI/UPI/OC/215A/2025-26 AutoPay retry limit) is reported as
+ *  "per mandate (per sequence number)" where each sequence/billing cycle permits
+ *  at most 1 initial attempt and 3 retries. Not verified from accessible primary-source
+ *  image extract. This value is implemented as project policy.
  *
  *  @type {number}
  */
 export const MAX_ATTEMPTS = 4; // ASSUMED — see ASSUMPTIONS.md §3 Rule D (not verified)
+export const maxAttemptsPerCycle = MAX_ATTEMPTS;
+// Backwards-compatibility alias:
+export const maxAttemptsPerMandate = maxAttemptsPerCycle;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §2  Pre-debit notification window
@@ -164,6 +168,8 @@ export const CONFIDENCE_THRESHOLD = 0.70; // ASSUMED — project design paramete
 /** Complete recovery policy snapshot. Freeze prevents accidental mutation. */
 export const RECOVERY_POLICY = Object.freeze({
   MAX_ATTEMPTS,
+  maxAttemptsPerCycle,
+  maxAttemptsPerMandate,
   preDebitNoticeMinHours,
   minRetryGapHours,
   freshNoticePerRetry,

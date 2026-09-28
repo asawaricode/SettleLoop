@@ -4,31 +4,34 @@
 --
 -- Changes:
 --   1. Add UNIQUE constraint on (mandate_id, attempt_number) in the attempts
---      table.  Prevents duplicate attempt numbers per mandate and closes the
---      gap that allowed concurrent callers to create the same attempt_number
---      through a non-atomic SELECT MAX()+1 pattern.
+--      table.  In this schema, attempts.mandate_id references mandates.id,
+--      which represents the specific billing/recovery cycle for that simulation run.
+--      This guarantees uniqueness of attempt numbers per cycle and closes the
+--      concurrency gap from non-atomic SELECT MAX()+1 patterns.
 --
 --   2. Add CHECK constraint requiring attempt_number IN [1, 4].
---      Enforces the 4-attempt ceiling at the database boundary, so the
+--      Enforces the 4-attempt ceiling per cycle at the database boundary, so the
 --      limit cannot be bypassed by any application-layer caller.
 --
 --   3. Add a DB-level trigger that prevents any direct UPDATE to
 --      mandates.status that would illegally skip a terminal state or
---      bypass an authoritative RPC.  The trigger logs to audit_logs and
---      raises an exception if the transition is forbidden.
+--      bypass an authoritative RPC.  The trigger ensures terminal cycle
+--      states (recovered, exhausted, stood_down) remain immutable.
+--      Note: Invariant 'failed cycle != cancelled mandate' is preserved —
+--      a cycle that exhausts attempts reaches status='exhausted' (failed cycle)
+--      without automatically cancelling the mandate agreement ('stood_down').
 --
 -- Pre-condition checks:
---   All three statements are idempotent (use IF NOT EXISTS).
---   A pre-migration data check found:
+--   All statements are idempotent (use IF NOT EXISTS).
+--   A pre-migration data check verified:
 --     - 0 rows with attempt_number outside [1, 4]
 --     - 0 duplicate (mandate_id, attempt_number) pairs
---   (Verified 28 Sep 2026 by db/validate_data.js against the hosted Supabase
---    project before applying this migration.)
+--   (Verified against the database before creating this migration.)
 --
 -- Evidence / policy annotation:
---   The 4-attempt ceiling (attempt_number <= 4) is ASSUMED project policy
---   based on the widely-reported Rule D.  Rule D primary-source verification
---   is `not verified` in ASSUMPTIONS.md §3.
+--   The 4-attempt ceiling per cycle (attempt_number <= 4) is ASSUMED project policy
+--   based on the reported Rule D (1 initial + 3 retries per sequence number).
+--   Rule D primary-source verification is `not verified` in ASSUMPTIONS.md §3.
 --   The UNIQUE constraint is a concurrency-safety measure independent of the
 --   regulatory debate about the exact retry limit.
 --
