@@ -17,5 +17,8 @@
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "fast-check": "^4.10.2"
   }
 }
