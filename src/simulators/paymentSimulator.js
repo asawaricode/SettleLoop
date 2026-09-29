@@ -65,7 +65,8 @@ function validateSimulatorInputs({ seed, mandateId, attemptNumber, amount }) {
  *   availableBalance?: number
  * }}
  */
-export function simulatePayment(params = {}) {
+export function simulatePayment(params = {}, configOverride = null) {
+  const config = configOverride || params.config || params.simulatorConfig || SIMULATOR_CONFIG;
   const mandateObj = params.mandate ?? {};
   const mandateId = params.mandateId ?? mandateObj.mandate_id ?? mandateObj.id;
   const attemptNumber = Number(params.attemptNumber ?? 1);
@@ -88,17 +89,17 @@ export function simulatePayment(params = {}) {
     bank_id: params.bankId,
   };
 
-  const traits = deriveHiddenTraits(seed, inputForTraits);
+  const traits = deriveHiddenTraits(seed, inputForTraits, config);
 
   // ── CAUSAL EVALUATION ─────────────────────────────────────────────────────
 
   // Step A: Other Decline Taxonomy (Hard / Unknown Decline)
   // Evaluates independent permanent failure causes (e.g. account closed, mandate cancelled)
   const otherNoise = noise(seed, traits.mandateId, currentDay, slot, 'other_decline');
-  if (otherNoise < SIMULATOR_CONFIG.OTHER_DECLINES.HARD_DECLINE_RATE) {
+  if (otherNoise < config.OTHER_DECLINES.HARD_DECLINE_RATE) {
     return {
       outcome: 'failure',
-      declineCode: SIMULATOR_CONFIG.OTHER_DECLINES.HARD_DECLINE_CODE,
+      declineCode: config.OTHER_DECLINES.HARD_DECLINE_CODE,
       declineCategory: 'hard',
       retryEligible: false,
       cause: 'hard_decline',
@@ -107,12 +108,12 @@ export function simulatePayment(params = {}) {
 
   if (
     otherNoise <
-    SIMULATOR_CONFIG.OTHER_DECLINES.HARD_DECLINE_RATE +
-      SIMULATOR_CONFIG.OTHER_DECLINES.UNKNOWN_DECLINE_RATE
+    config.OTHER_DECLINES.HARD_DECLINE_RATE +
+      config.OTHER_DECLINES.UNKNOWN_DECLINE_RATE
   ) {
     return {
       outcome: 'failure',
-      declineCode: SIMULATOR_CONFIG.OTHER_DECLINES.UNKNOWN_DECLINE_CODE,
+      declineCode: config.OTHER_DECLINES.UNKNOWN_DECLINE_CODE,
       declineCategory: 'unknown',
       retryEligible: false,
       cause: 'unknown_decline',
@@ -125,7 +126,7 @@ export function simulatePayment(params = {}) {
   if (bankNoise > traits.bankReliability) {
     return {
       outcome: 'failure',
-      declineCode: SIMULATOR_CONFIG.BANK.DOWN_DECLINE_CODE,
+      declineCode: config.BANK.DOWN_DECLINE_CODE,
       declineCategory: 'soft',
       retryEligible: true,
       cause: 'transient_bank_failure',
@@ -152,7 +153,7 @@ export function simulatePayment(params = {}) {
   if (availableBalance < traits.amount) {
     return {
       outcome: 'failure',
-      declineCode: SIMULATOR_CONFIG.BALANCE.INSUFFICIENT_FUNDS_CODE,
+      declineCode: config.BALANCE.INSUFFICIENT_FUNDS_CODE,
       declineCategory: 'soft',
       retryEligible: true,
       cause: 'insufficient_funds',
