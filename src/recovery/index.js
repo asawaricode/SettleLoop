@@ -67,6 +67,9 @@ export {
   EVALUATION_SEEDS,
   captureConfigSnapshot,
   assertEvaluationIntegrity,
+  assumedRetryFee,
+  ALTERNATIVE_ASSUMPTION_SET_A,
+  ALTERNATIVE_ASSUMPTION_SET_B,
 } from '../config/benchmarkConfig.js';
 export {
   runPairedBenchmark,

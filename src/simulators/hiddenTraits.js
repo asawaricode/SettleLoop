@@ -34,11 +34,12 @@ import { SIMULATOR_CONFIG } from '../config/simulatorConfig.js';
  *   bankId: string
  * }>}
  */
-export function deriveHiddenTraits(seed, mandate) {
+export function deriveHiddenTraits(seed, mandate, configOverride = null) {
   if (!mandate) {
     throw new Error('deriveHiddenTraits: mandate is required');
   }
 
+  const config = configOverride || mandate?.config || mandate?.simulatorConfig || SIMULATOR_CONFIG;
   const mandateObj = typeof mandate === 'object' && mandate !== null ? mandate : {};
   const mandateId = mandateObj.mandate_id || mandateObj.id || String(mandate);
   const amount = Number(mandateObj.amount) || 1000;
@@ -62,10 +63,10 @@ export function deriveHiddenTraits(seed, mandate) {
     : noise(seed, mandateId, 0, 'static', 'trait_volatility');
 
   const balanceDynamics = Object.freeze({
-    salaryMultiplier: SIMULATOR_CONFIG.BALANCE.SALARY_MULTIPLIER,
-    dailySpendFraction: SIMULATOR_CONFIG.BALANCE.DAILY_SPEND_FRACTION,
-    baselineBufferFraction: SIMULATOR_CONFIG.BALANCE.BASELINE_BUFFER_FRACTION,
-    volatilityNoiseScale: SIMULATOR_CONFIG.BALANCE.VOLATILITY_NOISE_SCALE,
+    salaryMultiplier: config.BALANCE.SALARY_MULTIPLIER,
+    dailySpendFraction: config.BALANCE.DAILY_SPEND_FRACTION,
+    baselineBufferFraction: config.BALANCE.BASELINE_BUFFER_FRACTION,
+    volatilityNoiseScale: config.BALANCE.VOLATILITY_NOISE_SCALE,
     volatility: Math.max(0, Math.min(1, volatility)),
   });
 
@@ -75,8 +76,8 @@ export function deriveHiddenTraits(seed, mandate) {
     bankReliability = Number(mandateObj.bankReliability);
   } else {
     const bankUptimeNoise = noise(seed, mandateId, 0, 'static', 'trait_bank_uptime');
-    const range = SIMULATOR_CONFIG.BANK.MAX_UPTIME_PROBABILITY - SIMULATOR_CONFIG.BANK.MIN_UPTIME_PROBABILITY;
-    bankReliability = SIMULATOR_CONFIG.BANK.MIN_UPTIME_PROBABILITY + (bankUptimeNoise * range);
+    const range = config.BANK.MAX_UPTIME_PROBABILITY - config.BANK.MIN_UPTIME_PROBABILITY;
+    bankReliability = config.BANK.MIN_UPTIME_PROBABILITY + (bankUptimeNoise * range);
   }
 
   // 4. Bank Identifier: visible category or bank name

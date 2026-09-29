@@ -135,6 +135,7 @@ export function captureConfigSnapshot() {
   return Object.freeze({
     recoveryPolicy: { ...RECOVERY_POLICY },
     simulatorConfig: JSON.parse(JSON.stringify(SIMULATOR_CONFIG)),
+    assumedRetryFee,
     timestamp: Date.now(),
   });
 }
@@ -156,5 +157,77 @@ export function assertEvaluationIntegrity(seed, initialSnapshot) {
         );
       }
     }
+    // Verify assumedRetryFee has not mutated
+    if (initialSnapshot.assumedRetryFee !== assumedRetryFee) {
+      throw new Error(
+        `EVALUATION INTEGRITY VIOLATION: assumedRetryFee was mutated during evaluation seed ${seed} (was ${initialSnapshot.assumedRetryFee}, now ${assumedRetryFee})`
+      );
+    }
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. Assumed Benchmark Retry Fee
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Assumed retry fee per attempt in INR (₹).
+ *
+ * ASSUMED: project benchmark parameter representing an assumed processing/infrastructure cost
+ * per recovery attempt (₹15). NOT a Razorpay fee. NOT a regulatory parameter.
+ * Documented in ASSUMPTIONS.md §7 & §12.
+ *
+ * @type {number}
+ */
+export const assumedRetryFee = 15;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. Alternative Simulator Assumption Sets (Sensitivity Evaluation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Alternative Assumption Set A: "Stressed Banking Environment"
+ *
+ * Explores recovery sensitivity when banking infrastructure exhibits lower uptime
+ * and higher rates of transient availability degradation.
+ *
+ * All parameter changes are ASSUMED project parameters (ASSUMPTIONS.md §13).
+ */
+export const ALTERNATIVE_ASSUMPTION_SET_A = Object.freeze({
+  name: 'stressed_banking',
+  label: 'Alternative Set A (Stressed Banking Environment)',
+  description: 'Lower bank uptime probability (higher transient bank failures)',
+  BANK: Object.freeze({
+    ...SIMULATOR_CONFIG.BANK,
+    DEFAULT_UPTIME_PROBABILITY: 0.80, // ASSUMED — reduced from 0.95 baseline
+    MIN_UPTIME_PROBABILITY: 0.70,     // ASSUMED — reduced from 0.90 baseline
+    MAX_UPTIME_PROBABILITY: 0.85,     // ASSUMED — reduced from 0.98 baseline
+  }),
+  BALANCE: SIMULATOR_CONFIG.BALANCE,
+  OTHER_DECLINES: SIMULATOR_CONFIG.OTHER_DECLINES,
+  CANARY: SIMULATOR_CONFIG.CANARY,
+});
+
+/**
+ * Alternative Assumption Set B: "High Balance Volatility & Attenuated Salary Effect"
+ *
+ * Explores recovery sensitivity when customers experience smaller salary inflow bumps,
+ * accelerated spending depletion, and higher balance noise shocks.
+ *
+ * All parameter changes are ASSUMED project parameters (ASSUMPTIONS.md §13).
+ */
+export const ALTERNATIVE_ASSUMPTION_SET_B = Object.freeze({
+  name: 'high_volatility_weak_salary',
+  label: 'Alternative Set B (High Volatility & Attenuated Salary Effect)',
+  description: 'Weaker salary-day multiplier, faster spending drift, higher volatility noise scale',
+  BANK: SIMULATOR_CONFIG.BANK,
+  BALANCE: Object.freeze({
+    ...SIMULATOR_CONFIG.BALANCE,
+    SALARY_MULTIPLIER: 1.5,           // ASSUMED — reduced from 3.0 baseline
+    DAILY_SPEND_FRACTION: 0.20,       // ASSUMED — increased from 0.10 baseline
+    BASELINE_BUFFER_FRACTION: 0.10,   // ASSUMED — reduced from 0.20 baseline
+    VOLATILITY_NOISE_SCALE: 0.50,     // ASSUMED — increased from 0.25 baseline
+  }),
+  OTHER_DECLINES: SIMULATOR_CONFIG.OTHER_DECLINES,
+  CANARY: SIMULATOR_CONFIG.CANARY,
+});

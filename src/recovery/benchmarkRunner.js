@@ -42,7 +42,7 @@ import { buildObservation } from '../simulators/observation.js';
 import { decideControlAction } from './controlPolicy.js';
 import { decideFixedScheduleAction } from './baselinePolicy.js';
 import { decideSalaryAwareAction } from './salaryAwarePolicy.js';
-import { proposeSmartRecoveryAction } from './smartAgent.js';
+import { proposeSmartRecoveryAction, setLLMMode } from './smartAgent.js';
 import { validateGuardrails } from './guardrails.js';
 import { MAX_ATTEMPTS, MAX_DELAY_DAYS } from '../config/recoveryPolicy.js';
 
@@ -113,11 +113,17 @@ export async function simulateMandateArm({
   seed,
   maxDays = 14,
   llmMode = 'mock',
+  simulatorConfig = null,
 }) {
+  if (llmMode) {
+    setLLMMode(llmMode);
+  }
+
   let currentDay = mandate.firstDueDay || 1;
   let attemptsUsed = 0;
   let finalStatus = 'pending';
   let recoveryDay = null;
+  let guardrailOverridesCount = 0;
   const attempts = [];
   const attemptHistory = [];
   let nextAction = 'retry';
@@ -139,6 +145,7 @@ export async function simulateMandateArm({
       amount: mandate.amount,
       currentDay,
       slot: '14:00', // Non-peak slot
+      simulatorConfig,
     });
 
     attemptsUsed++;
@@ -236,6 +243,10 @@ export async function simulateMandateArm({
           currentDay,
         });
 
+        if (!guardrailResult.allowed || guardrailResult.action !== smartProposal.action) {
+          guardrailOverridesCount++;
+        }
+
         decision = {
           action: guardrailResult.action,
           delayDays: smartProposal.retryDelayDays ?? smartProposal.delayDays ?? 2,
@@ -246,6 +257,19 @@ export async function simulateMandateArm({
 
       default:
         throw new Error(`simulateMandateArm: unsupported arm "${arm}"`);
+    }
+
+    // Verification: Non-Smart arms must never produce guardrail rejections
+    if (arm !== BENCHMARK_ARMS.SMART && decision.action === 'retry') {
+      const nonSmartCheck = validateGuardrails({
+        proposal: { action: decision.action, retryDelayDays: decision.delayDays || 1, confidence: 1.0, channel: 'auto_debit' },
+        mandate: { id: mandate.mandateId, status: 'pending', attempts_used: attemptsUsed, contact_consent: true },
+        failure: { category: simResult.declineCategory || 'soft', retryEligible: simResult.retryEligible ?? true },
+        currentDay,
+      });
+      if (!nonSmartCheck.allowed) {
+        throw new Error(`CRITICAL DEFECT: Non-Smart arm "${arm}" produced a guardrail rejection!`);
+      }
     }
 
     // State transitions based on decision
@@ -272,12 +296,20 @@ export async function simulateMandateArm({
     finalStatus = attemptsUsed >= MAX_ATTEMPTS ? 'exhausted' : 'stood_down';
   }
 
+  const daysToRecovery = finalStatus === 'recovered' && recoveryDay !== null
+    ? recoveryDay - (mandate.firstDueDay || 1)
+    : null;
+
   return {
     mandateId: mandate.mandateId,
     arm,
     finalStatus,
+    amount: mandate.amount,
+    recoveredAmount: finalStatus === 'recovered' ? mandate.amount : 0,
     attemptsCount: attemptsUsed,
     recoveryDay,
+    daysToRecovery,
+    guardrailOverrides: guardrailOverridesCount,
     attempts,
     hiddenTraitsAccessed: false,
   };
@@ -298,9 +330,11 @@ export async function simulateMandateArm({
  *     mandateCount: number,
  *     recoveredCount: number,
  *     recoveryRate: number,
+ *     recoveredINR: number,
  *     totalAttempts: number,
  *     attemptsPerMandate: number,
- *     averageTimeToRecovery: number
+ *     averageTimeToRecovery: number,
+ *     guardrailOverrides: number
  *   }>,
  *   populationSize: number,
  *   resultsByArm: Record<string, Array<object>>
@@ -311,6 +345,7 @@ export async function runPairedBenchmark({
   count = 10,
   maxDays = 14,
   llmMode = 'mock',
+  simulatorConfig = null,
 }) {
   if (seed === undefined || seed === null || !Number.isFinite(Number(seed))) {
     throw new Error('runPairedBenchmark: seed must be a finite number');
@@ -339,6 +374,7 @@ export async function runPairedBenchmark({
         seed: numericSeed,
         maxDays,
         llmMode,
+        simulatorConfig,
       });
       armResults.push(mandateResult);
     }
@@ -347,7 +383,14 @@ export async function runPairedBenchmark({
 
     const recoveredCount = armResults.filter((r) => r.finalStatus === 'recovered').length;
     const totalAttempts = armResults.reduce((sum, r) => sum + r.attemptsCount, 0);
-    const recoveryDays = armResults.filter((r) => r.recoveryDay !== null).map((r) => r.recoveryDay - 1);
+    const recoveredINR = armResults
+      .filter((r) => r.finalStatus === 'recovered')
+      .reduce((sum, r) => sum + (r.amount || 0), 0);
+    const totalGuardrailOverrides = armResults.reduce((sum, r) => sum + (r.guardrailOverrides || 0), 0);
+
+    const recoveryDays = armResults
+      .filter((r) => r.finalStatus === 'recovered' && r.recoveryDay !== null)
+      .map((r) => r.recoveryDay - 1);
     const avgTimeToRecovery =
       recoveryDays.length > 0
         ? Number((recoveryDays.reduce((a, b) => a + b, 0) / recoveryDays.length).toFixed(4))
@@ -357,9 +400,11 @@ export async function runPairedBenchmark({
       mandateCount: armResults.length,
       recoveredCount,
       recoveryRate: Number((recoveredCount / armResults.length).toFixed(4)),
+      recoveredINR,
       totalAttempts,
       attemptsPerMandate: Number((totalAttempts / armResults.length).toFixed(4)),
       averageTimeToRecovery: avgTimeToRecovery,
+      guardrailOverrides: totalGuardrailOverrides,
     };
   }
 

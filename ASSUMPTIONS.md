@@ -309,7 +309,14 @@ The following are **project-level assumptions** used in the SettleLoop simulator
 | **Minimum gap between retries** | Baseline policy schedules retries at D+1, D+3, D+6. No primary-sourced minimum-gap regulation has been verified. | `assumed` — project design decision. |
 | **Retries in non-peak clock slots** | Simulator does not enforce real clock-time peak/non-peak windows; it operates in virtual days. | `assumed` — Rule E (AutoPay-specific non-peak requirement) is `not verified` (table rows not in accessible image extracts). The general peak-hour restriction (G-3) is `sourced`; the simulator measures comparative policy behaviour under virtual-day granularity only. |
 | **4-attempt ceiling in guardrails** | `guardrails.js` enforces `attempts_used < 4` (max 4 total attempts: 1 initial + 3 retries). | `assumed` — implemented on the basis of the widely-reported NPCI AutoPay retry rule. Rule D primary-source verification is `not verified` (image extracts did not include the relevant table rows). |
-| **Simulator payment fee** | No fee modelled. | `assumed` — not a regulatory parameter. |
+| **Assumed retry fee (`assumedRetryFee`)** | ₹15 per retry attempt. | `assumed` — project benchmark parameter representing an assumed processing/infrastructure cost per recovery attempt (₹15). NOT a Razorpay fee. NOT a regulatory parameter. Used in Phase 6 net value and break-even calculations. Documented in §7 and §13. |
+
+### 7.1 Timing Documentation & Regulatory Boundaries
+
+- **Verified RBI Rule**: The issuer must send a pre-debit notification to the customer at least 24 hours before the actual charge/debit is executed for a recurring e-mandate transaction (`preDebitNoticeMinHours = 24`, sourced from RBI circulars; see §2 Rule A).
+- **Simulator `minRetryGapHours`**: Set to `0` (`minRetryGapHours = 0`, `assumed`). No primary-sourced regulation requires or permits a specific retry-to-retry gap. The simulator enforces no mandatory inter-retry idle gap beyond the pre-debit notice requirement.
+- **Simulator `freshNoticePerRetry`**: Set to `false` (`freshNoticePerRetry = false`, `assumed`). Actual regulatory treatment of whether a fresh 24-hour pre-debit notice is mandated prior to an automated recovery retry attempt is unverified in primary circular texts; the simulator assumes `freshNoticePerRetry = false` as a benchmark design assumption.
+- **Regulatory Claim Invariant**: Any retry timing behavior beyond the sourced 24-hour pre-debit notification rule is an explicit benchmark assumption, **not a regulatory claim**.
 
 ---
 
@@ -425,4 +432,122 @@ The following are **project-level assumptions** used in the SettleLoop simulator
 No experiment arm receives or reads hidden simulator state directly. All strategy inputs pass through the frozen, allowlisted Observation boundary.
 
 *Assumed benchmark parameters — not claimed as real-world recovery performance.*
+
+---
+
+## 13. Phase 6 Evaluation Evidence Assumptions
+
+### 13.1 Frozen Evaluation Seeds (11–40)
+Evaluation is strictly confined to seeds 11–40 (30 paired seeds, degrees of freedom $df = 29$). Evaluation execution is read-only and immutable; no tuning, training, prompt modifications, or configuration adjustments occur.
+
+### 13.2 Assumed Retry Fee & Financial Metrics
+- **Assumed retry fee (`assumedRetryFee`)**: Configured as ₹15.00 per retry attempt. This is an explicitly ASSUMED benchmark parameter representing hypothetical marginal gateway/processing costs. It is NOT a Razorpay fee and NOT a regulatory fee.
+- **Net Value formula**:
+  $$\text{net value} = \text{recovered ₹} - (\text{attempts} \times \text{assumedRetryFee})$$
+- **Break-Even Fee formula**:
+  For each non-control arm, the break-even fee against Control (where mean net value equals Control mean net value) is:
+  $$\text{BreakEvenFee} = \frac{\overline{\text{RecoveredINR}}_{\text{arm}} - \overline{\text{RecoveredINR}}_{\text{control}}}{\overline{\text{Attempts}}_{\text{arm}} - \overline{\text{Attempts}}_{\text{control}}}$$
+  Break-even is explicitly NOT defined as net value = 0.
+
+### 13.3 Statistical Method (Paired Difference 95% Confidence Intervals)
+For all metrics and pairwise comparisons:
+- Paired per-seed difference: $d_i = \text{ArmA}_i - \text{ArmB}_i$ across the 30 evaluation seeds ($N = 30$).
+- Standard error: $SE = s_d / \sqrt{N}$ where $s_d = \sqrt{\frac{1}{N-1} \sum (d_i - \bar{d})^2}$.
+- $t$-critical: $t_{0.025, 29} = 2.045229638$ (exact two-tailed 95% confidence with $df = 29$).
+- Confidence Interval: $[\bar{d} - t_{\text{critical}} \times SE, \; \bar{d} + t_{\text{critical}} \times SE]$.
+- Identical CI methodology applied universally across all metrics (recovery rate, recovered ₹, attempts, days to recovery conditional on recovery, guardrail overrides, net value).
+
+### 13.4 Alternative Simulator Assumption Sets (Sensitivity Analysis)
+
+To evaluate the robustness of policy comparisons to variations in operating conditions, exactly TWO alternative simulator assumption sets are defined. Both sets use ONLY parameters that already exist in `SIMULATOR_CONFIG` without introducing external statistics:
+
+#### Alternative Assumption Set A: "Stressed Banking Environment"
+- `DEFAULT_UPTIME_PROBABILITY: 0.80` (`assumed`, baseline: 0.96)
+- `MIN_UPTIME_PROBABILITY: 0.70` (`assumed`, baseline: 0.90)
+- `MAX_UPTIME_PROBABILITY: 0.85` (`assumed`, baseline: 0.99)
+- **Rationale**: Models severe degradation in issuer bank API availability/success rates. Evaluates whether intelligent retry scheduling retains its advantage when infrastructure failure rates rise.
+
+#### Alternative Assumption Set B: "High Volatility & Attenuated Salary Effect"
+- `SALARY_MULTIPLIER: 1.5` (`assumed`, baseline: 2.5)
+- `DAILY_SPEND_FRACTION: 0.20` (`assumed`, baseline: 0.05)
+- `BASELINE_BUFFER_FRACTION: 0.10` (`assumed`, baseline: 0.20)
+- `VOLATILITY_NOISE_SCALE: 0.50` (`assumed`, baseline: 0.25)
+- **Rationale**: Models extreme balance volatility and a diminished payday liquidity spike. Evaluates whether salary-aware heuristics continue to outperform fixed schedules when liquidity signals are degraded.
+
+*Invariants across all sensitivity runs*:
+- Evaluation seeds 11–40 remain unchanged ($N = 30$, $df = 29$).
+- All four experiment arms (Control, Fixed Schedule, Salary-Aware, Smart) remain unchanged.
+- Shared causal noise stream and paired mandate population generation remain identical.
+
+---
+
+### 13.5 Reporting Clarification: Metric Labels & Attempt Accounting
+
+To prevent misinterpreting aggregate seed totals as per-mandate figures:
+- **Total attempts per seed (10 mandates)**: The sum of all attempts dispatched across the 10 mandates within a seed.
+- **Per-mandate mean attempts**: Total attempts divided by mandate count ($N=10$).
+- **Control Arm Attempt Invariant**: Control performs exactly 1 initial debit attempt per mandate and strictly **ZERO** recovery retries. Consequently, Control shows 10.0000 total attempts per seed (1.0000 attempt per mandate) and strictly 0 recovery retries.
+- **Conditional Days to Recovery**: Computed strictly over recovered mandates; unrecovered mandates are completely excluded (never imputed, capped, or averaged as max days).
+
+---
+
+### 13.6 Paired Sensitivity Evaluation Results (Seeds 11–40, df=29)
+
+#### 1. Headline Arm Performance Across Assumption Sets
+
+| Assumption Set | Arm | Recovery Rate | Recovered ₹ | Total Attempts / Seed (10 mandates) | Per-Mandate Mean Attempts | Mean Recovery Retries / Seed | Cond. Days to Recovery | Overrides | Net Value (₹15 fee) |
+|:---|:---|:---|:---|:---|:---|:---|:---|:---|:---|
+| **Baseline** | Control | 65.67% | ₹18,124.23 | 10.0000 | 1.0000 | 0.0000 | 0.0000 | 0 | ₹17,974.23 |
+| | Fixed Schedule | 89.67% | ₹23,919.10 | 14.3000 | 1.4300 | 4.3000 | 0.7042 | 0 | ₹23,704.60 |
+| | Salary-Aware | 90.33% | ₹23,984.70 | 14.2667 | 1.4267 | 4.2667 | 0.8135 | 0 | ₹23,770.70 |
+| | Smart (mock) | 88.00% | ₹23,404.10 | 14.0333 | 1.4033 | 4.0333 | 0.7479 | 28 | ₹23,193.60 |
+| **Set A (Stressed Bank)** | Control | 55.33% | ₹15,295.97 | 10.0000 | 1.0000 | 0.0000 | 0.0000 | 0 | ₹15,145.97 |
+| | Fixed Schedule | 85.33% | ₹22,930.57 | 16.6333 | 1.6633 | 6.6333 | 1.0927 | 0 | ₹22,681.07 |
+| | Salary-Aware | 86.00% | ₹23,074.40 | 16.5667 | 1.6567 | 6.5667 | 1.1578 | 0 | ₹22,825.90 |
+| | Smart (mock) | 85.00% | ₹22,597.83 | 15.6000 | 1.5600 | 5.6000 | 1.0827 | 40 | ₹22,363.83 |
+| **Set B (High Volatility)** | Control | 10.67% | ₹2,969.27 | 10.0000 | 1.0000 | 0.0000 | 0.0000 | 0 | ₹2,819.27 |
+| | Fixed Schedule | 28.33% | ₹7,355.70 | 32.0333 | 3.2033 | 22.0333 | 3.6644 | 0 | ₹6,875.20 |
+| | Salary-Aware | 30.33% | ₹7,872.97 | 31.6000 | 3.1600 | 21.6000 | 3.3934 | 0 | ₹7,398.97 |
+| | Smart (mock) | 28.33% | ₹7,173.87 | 30.6000 | 3.0600 | 20.6000 | 3.4473 | 104 | ₹6,714.87 |
+
+#### 2. Pairwise Comparisons (Diff ± 95% CI) Across Assumption Sets
+
+| Comparison | Assumption Set | Δ Recovery Rate (95% CI) | Δ Recovered ₹ (95% CI) | Δ Total Attempts (95% CI) | Δ Net Value (95% CI) | Break-Even Fee |
+|:---|:---|:---|:---|:---|:---|:---|
+| **Fixed vs Control** | Baseline | +24.00% [+17.70%, +30.30%] | +₹5,794.87 [+₹4,271.74, +₹7,318.00] | +4.3000 [+3.6841, +4.9159] | +₹5,730.37 [+₹4,213.19, +₹7,247.55] | ₹1,347.64 |
+| | Set A | +30.00% [+23.80%, +36.20%] | +₹7,634.60 [+₹5,992.83, +₹9,276.37] | +6.6333 [+5.8943, +7.3723] | +₹7,535.10 [+₹5,897.66, +₹9,172.54] | ₹1,150.95 |
+| | Set B | +17.67% [+12.06%, +23.27%] | +₹4,386.43 [+₹2,999.03, +₹5,773.83] | +22.0333 [+20.5739, +23.4927] | +₹4,055.93 [+₹2,683.41, +₹5,428.45] | ₹199.08 |
+| **Salary-Aware vs Control** | Baseline | +24.67% [+18.30%, +31.04%] | +₹5,860.47 [+₹4,297.80, +₹7,423.14] | +4.2667 [+3.6669, +4.8665] | +₹5,796.47 [+₹4,239.51, +₹7,353.43] | ₹1,373.54 |
+| | Set A | +30.67% [+24.09%, +37.24%] | +₹7,778.43 [+₹6,050.27, +₹9,506.59] | +6.5667 [+5.8118, +7.3216] | +₹7,679.93 [+₹5,956.12, +₹9,403.74] | ₹1,184.53 |
+| | Set B | +19.67% [+14.08%, +25.26%] | +₹4,903.70 [+₹3,478.47, +₹6,328.93] | +21.6000 [+20.0883, +23.1117] | +₹4,579.70 [+₹3,169.34, +₹5,990.06] | ₹227.02 |
+| **Smart vs Control** | Baseline | +22.33% [+16.59%, +28.08%] | +₹5,279.87 [+₹3,889.37, +₹6,670.37] | +4.0333 [+3.4682, +4.5984] | +₹5,219.37 [+₹3,833.87, +₹6,604.87] | ₹1,309.07 |
+| | Set A | +29.67% [+23.35%, +35.98%] | +₹7,301.86 [+₹5,699.98, +₹8,903.74] | +5.6000 [+4.9213, +6.2787] | +₹7,217.86 [+₹5,619.66, +₹8,816.06] | ₹1,303.90 |
+| | Set B | +17.67% [+12.51%, +22.83%] | +₹4,204.60 [+₹2,933.14, +₹5,476.06] | +20.6000 [+19.1672, +22.0328] | +₹3,895.60 [+₹2,638.16, +₹5,153.04] | ₹204.11 |
+| **Smart vs Salary-Aware** | Baseline | -2.33% [-5.01%, +0.35%] | -₹580.60 [-₹1,269.96, +₹108.76] | -0.2333 [-0.5960, +0.1293] | -₹577.10 [-₹1,263.85, +₹109.65] | N/A |
+| | Set A | -1.00% [-4.00%, +2.00%] | -₹476.57 [-₹1,269.43, +₹316.29] | -0.9667 [-1.4395, -0.4939] | -₹462.07 [-₹1,254.91, +₹330.77] | N/A |
+| | Set B | -2.00% [-5.01%, +1.01%] | -₹699.10 [-₹1,475.29, +₹77.09] | -1.0000 [-1.5833, -0.4167] | -₹684.10 [-₹1,458.74, +₹90.54] | N/A |
+
+#### 3. Pairwise Ordering Invariance Under Alternative Assumptions
+The pairwise ordering across arms remains **completely invariant** under both alternative assumption sets:
+- **Recovery Rate**: Salary-Aware > Fixed Schedule $\ge$ Smart > Control under Baseline, Set A, and Set B.
+- **Recovered ₹**: Salary-Aware > Fixed Schedule > Smart > Control under Baseline, Set A, and Set B.
+- **Net Value**: Salary-Aware > Fixed Schedule > Smart > Control under Baseline, Set A, and Set B.
+- **Conclusion**: Pairwise ordering does **NOT** change under either alternative assumption set.
+
+---
+
+### 13.7 Timing Documentation & Regulatory Boundary Invariant
+- **Verified RBI Rule**: Pre-debit notification must be transmitted at least 24 hours prior to debit/charge execution (`preDebitNoticeMinHours = 24`, sourced from RBI circulars; see §2 Rule A).
+- **Simulator Assumptions**:
+  * `minRetryGapHours = 0` (`assumed`): No regulatory rule prescribes an inter-retry gap; the simulator enforces no delay beyond the 24h pre-debit notice window.
+  * `freshNoticePerRetry = false` (`assumed`): Simulator assumes fresh notice is not required for automated retry attempts within a cycle.
+- **Boundary**: Any retry timing behavior beyond the sourced 24-hour pre-debit notification rule is an explicit benchmark assumption, **NOT a regulatory claim**.
+
+---
+
+### 13.8 Gemini Replay Status & Evidence Boundary
+- **Inspection of LLM Cache**: Inspection confirms that **no valid cached real Gemini outputs exist** in the repository or runtime memory (`_replayCache` is an empty Map; no external cache store exists on disk).
+- **No Mock-as-Evidence Claim**: The `--llm=mock` results presented above validate pipeline integrity, causal noise isolation, and statistical machinery only. They **must NOT be presented as evidence of real Gemini performance**.
+- **Blocked State**: Because real Gemini outputs are not available and cannot be fabricated, synthesized, or silently substituted with mock data, **real Gemini evaluation remains formally blocked**.
+- **Phase 6 Status**: Phase 6 **cannot be marked complete** until valid real Gemini outputs are cached and evaluated under `--llm=replay`.
 
