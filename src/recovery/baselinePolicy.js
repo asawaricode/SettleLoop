@@ -88,7 +88,7 @@ export async function executeBaselinePolicy({ runId, mandate, currentDay, seed }
     return existingMandate;
   }
 
-  // Step 3: Run payment simulator (NEVER pass currentDay or experiment_arm)
+  // Step 3: Run payment simulator with simulation clock day
   const simMandateId =
     mandate.mandate_id && /^M-\d+$/.test(mandate.mandate_id)
       ? mandate.mandate_id
@@ -99,8 +99,7 @@ export async function executeBaselinePolicy({ runId, mandate, currentDay, seed }
     mandateId: simMandateId,
     attemptNumber: attempt.attempt_number,
     amount: mandate.amount,
-    balanceVolatility: mandate.balance_volatility,
-    incomeDayOfMonth: mandate.income_day_of_month,
+    currentDay,
   });
 
   // Step 4: Complete attempt
