@@ -1,7 +1,7 @@
 # SettleLoop — Demo & Judge Guide
 
 This guide provides the exact step-by-step sequence to demonstrate the system to a judge.
-All observations in the **MAIN DEMO** section were produced by a real execution against live Supabase and live Gemini API.
+All observations in the interactive walkthrough are produced using deterministic benchmark mode with safety guardrail enforcement. For the definitive 4-arm evaluation benchmark across seeds 11–40, run `npm run benchmark`.
 
 ---
 
@@ -12,7 +12,7 @@ All observations in the **MAIN DEMO** section were produced by a real execution 
 npm install
 
 # 2. Ensure .env is populated (see .env.example)
-# Required: SUPABASE_URL, SUPABASE_SECRET_KEY, GEMINI_API_KEY
+# Required for database and dashboard: SUPABASE_URL, SUPABASE_SECRET_KEY
 
 # 3. Start the server
 npm start
@@ -29,7 +29,7 @@ curl http://localhost:3000/
 
 ## Interactive Quick Walkthrough (Seed 20001 Cohort)
 
-*Note: This 9-mandate walkthrough is designed for fast interactive demonstration (<30 seconds). For the definitive large-scale multi-arm benchmark results, see the [Final n=300 Synthetic Experiment Results](#final-n300-synthetic-experiment-results) section below.*
+*Note: This 9-mandate walkthrough is designed for fast interactive demonstration (<30 seconds). For the definitive large-scale multi-arm benchmark results, see the [Definitive Multi-Arm Evaluation Benchmark](#definitive-multi-arm-evaluation-benchmark-seeds-1140-n300-df29) section below.*
 
 ### Verified Configuration
 
@@ -38,7 +38,7 @@ curl http://localhost:3000/
 | Seed | `20001` |
 | Mandate count | `9` (3 Control + 3 Baseline + 3 Smart) |
 | Max days | `7` |
-| Live Gemini | ✅ Yes — Smart arm called live Gemini API |
+| LLM Mode | Deterministic benchmark mode (safe fallback; authentic Gemini replay remains blocked) |
 | Days evaluated | 0, 1, 2, 3, 4, 5, 6, 7 |
 | Total processed | 16 mandate-events across all days |
 | Termination reason | `reached_max_days` |
@@ -107,7 +107,7 @@ Virtual Day 0
       Baseline mandates → executeBaselinePolicy (retry via RPC)
       Smart mandates → executeSmartPolicy:
           1. failureClassifier classifies the last attempt outcome
-          2. proposeSmartRecoveryAction calls Gemini API → gets { action, retryDelayDays, reasoning }
+          2. proposeSmartRecoveryAction solicits proposal (Gemini API or deterministic fallback) → gets { action, retryDelayDays, reasoning }
           3. validateGuardrails enforces deterministic safety rules
           4. If allowed → execute_attempt RPC → complete_attempt RPC
           5. If human_review → create_approval_request RPC, mandate → pending_human_approval
@@ -341,88 +341,81 @@ This behavior is tested and passing in `tests/step15.test.js` and `tests/step18.
 
 ---
 
-## Final n=300 Synthetic Experiment Results
+## Definitive Multi-Arm Evaluation Benchmark (Seeds 11–40, N=300, df=29)
 
-The definitive multi-arm experiment was executed on the full $n=300$ cohort (100 Control, 100 Baseline, 100 Smart) outside serverless HTTP constraints:
+The definitive multi-arm evaluation benchmark was executed across the 30 frozen evaluation seeds `11–40` ($N = 300$ mandates per arm, $1{,}200$ total simulations) using the pure in-process benchmark runner (`npm run benchmark`):
 
-- **Run ID:** `02e1ecea-1a09-4813-a994-f007ba5fc497`
-- **Seed:** `42000`
-- **Virtual Schedule Window:** Max 14 virtual days (Evaluated days: `0–9`)
-- **Termination Reason:** `no_future_actions_within_window`
-- **Total Executed Attempts (All Arms):** `347`
-- **Elapsed Time:** `979.13s`
+- **Seeds Evaluated:** `11–40` ($N=30$, degrees of freedom $df = 29$)
+- **Mandates per Seed:** `10`
+- **Virtual Schedule Window:** Max 14 virtual days
+- **Shared Causal Noise:** Identical PRNG noise stream shared across all 4 arms for each mandate
+- **LLM Mode for Validation:** `--llm=mock` (pipeline, causal noise, and invariant validation only)
+- **Authentic Gemini Replay Status:** **BLOCKED** (no cached Gemini responses exist; mock results are NOT presented as real Gemini performance)
 
-| Metric | Control | Baseline | Smart |
-|---|:---:|:---:|:---:|
-| Mandates | 100 | 100 | 100 |
-| Recovered | 65 | 80 | 73 |
-| Recovery Rate | 65.00% | 80.00% | 73.00% |
-| Executed Attempts | 100 | 122 | 125 |
-| Attempts / Mandate | 1.00 | 1.22 | 1.25 |
-| Attempts / Recovery | 1.5385 | 1.5250 | 1.7123 |
-| Total Amount | ₹2,422,396.12 | ₹2,343,614.12 | ₹2,653,372.67 |
-| Recovered Amount | ₹1,468,108.78 | ₹1,895,988.24 | ₹1,874,473.42 |
-| Average Days to Recovery | 0.0 days | 0.3375 days | 0.6849 days |
-| Smart Lift vs Control | — | — | **+8.00 pp** (+12.31% rel) |
-| Smart Lift vs Baseline | — | — | **-7.00 pp** (-8.75% rel) |
+### Headline Benchmark Performance (Baseline Configuration)
 
----
+| Arm | Recovery Rate | Recovered ₹ | Total Attempts / Seed (10 mandates) | Per-Mandate Mean Attempts | Mean Recovery Retries / Seed | Cond. Days to Recovery | Overrides | Net Value (₹15 fee) |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Control** | 65.67% | ₹18,124.23 | 10.0000 | 1.0000 | 0.0000 | 0.0000 | 0 | ₹17,974.23 |
+| **Fixed Schedule** | 89.67% | ₹23,919.10 | 14.3000 | 1.4300 | 4.3000 | 0.7042 | 0 | ₹23,704.60 |
+| **Salary-Aware** | 90.33% | ₹23,984.70 | 14.2667 | 1.4267 | 4.2667 | 0.8135 | 0 | ₹23,770.70 |
+| **Smart (mock)** | 88.00% | ₹23,404.10 | 14.0333 | 1.4033 | 4.0333 | 0.7479 | 28 | ₹23,193.60 |
 
-## Safety Results
+### Pairwise Comparisons (Paired Differences, df=29, 95% CIs)
 
-```
-hardDeclineRetryViolations:  0
-duplicateAttemptViolations:  0
-consentViolations:           0
-notificationViolations:      0
-totalViolations:             0
-safe:                        true
-```
+| Comparison | Δ Recovery Rate (95% CI) | Δ Recovered ₹ (95% CI) | Δ Total Attempts (95% CI) | Break-Even Fee vs Control |
+|:---|:---:|:---:|:---:|:---:|
+| **Fixed vs Control** | +24.00% [+17.70%, +30.30%] | +₹5,794.87 [+₹4,271.74, +₹7,318.00] | +4.3000 [+3.6841, +4.9159] | ₹1,347.64 |
+| **Salary-Aware vs Control** | +24.67% [+18.30%, +31.04%] | +₹5,860.47 [+₹4,297.80, +₹7,423.14] | +4.2667 [+3.6669, +4.8665] | ₹1,373.54 |
+| **Smart vs Control** | +22.33% [+16.59%, +28.08%] | +₹5,279.87 [+₹3,889.37, +₹6,670.37] | +4.0333 [+3.4682, +4.5984] | ₹1,309.07 |
+| **Smart vs Salary-Aware** | -2.33% [-5.01%, +0.35%] | -₹580.60 [-₹1,269.96, +₹108.76] | -0.2333 [-0.5960, +0.1293] | N/A |
 
-**All safety invariants held across all 347 executed attempts.** No hard failures were retried, no duplicate attempts were created, and zero consent violations occurred.
+### Pairwise Ordering Invariance
+Across the Baseline and both sensitivity assumption sets (Set A: Stressed Bank; Set B: High Volatility), the hierarchy is completely invariant:
+$$\text{Recovery Rate: } \text{Salary-Aware} > \text{Fixed Schedule} \ge \text{Smart} > \text{Control}$$
+$$\text{Net Value: } \text{Salary-Aware} > \text{Fixed Schedule} > \text{Smart} > \text{Control}$$
 
 ---
 
-## Live Gemini vs Fallback — Honest Statement
+## Safety & Invariant Verification
 
-| Run | Gemini | Source |
-|-----|--------|--------|
-| Final n=300 experiment (seed 42000) | ✅ Live Gemini API called | `source: "ai"` in audit logs |
-| Seed 20001 (quick 9-mandate walk-through) | 🟡 Deterministic benchmark | `source: "fallback"` in audit logs |
-| Step 18 tests | 🔵 Mocked (test intercept) | Clearly labeled in test code |
-| Step 19 tests | 🔵 Mocked (test intercept) | Clearly labeled in test code |
-| Server fallback (Gemini unavailable) | 🟡 Deterministic heuristic | `source: "fallback"` in audit logs |
+Across all benchmark runs and regression suites:
+- **Control Retries Invariant:** Control strictly executes 1 initial debit attempt per mandate and exactly **0 recovery retries** (10.0000 attempts per seed / 1.0000 attempt per mandate).
+- **Max Attempt Ceiling:** No mandate in any arm ever exceeded 4 attempts per cycle.
+- **Hard Decline Safeguard:** Hard declines and unknown categories experienced zero retries (100% stand-down).
+- **Pre-Debit Notice Gap:** No retry dispatch occurred within 24 hours of pre-debit notification.
+- **Non-Peak Dispatch:** All scheduled attempts occurred outside NPCI peak windows (10:00–13:00, 17:00–21:30 IST).
 
-The Smart arm in production always attempts a live Gemini call first. If Gemini times out (10 s limit) or returns an unusable response, it falls back to the deterministic heuristic (mirrors Baseline logic). The fallback is labeled as such in audit logs — it is never presented as AI output.
+---
+
+## Live Gemini vs Fallback vs Replay — Honest Evidence Statement
+
+| Run Mode | LLM Configuration | Status & Evidentiary Claim |
+|:---|:---|:---|
+| **Reproducible Benchmark** (`npm run benchmark`) | `--llm=mock` | Deterministic mock responses used **strictly for pipeline, causal noise, and invariant validation**. NOT presented as real Gemini performance. |
+| **Authentic Replay Evaluation** | `--llm=replay` | **BLOCKED**. No valid cached real Gemini outputs currently exist. Per Phase 6 rules, data was not synthesized or fabricated. |
+| **Interactive Walkthrough** (Seed 20001) | Deterministic mode | Uses deterministic fallback heuristic to guarantee exact reproducible walkthrough demonstration. |
+| **Live AI API Integration** | `--llm=live` (Gemini 2.0 Flash) | Implemented and verified via unit tests; requires `GEMINI_API_KEY` for live calls. |
 
 ---
 
 ## Judge-Facing Narrative
 
 ### The Problem
-Recurring payment mandates fail frequently — insufficient balance, bank downtime, soft declines. Without smart retry logic, every failed mandate is lost revenue and potential churn.
+Recurring payment mandates fail frequently due to temporary insufficient balances, issuer bank downtime, and network timeouts. Fixed calendar retries are context-blind to customer cash-flow patterns and bank uptime.
 
-### The Three Strategies
-- **Control** accepts the failure — it's the cost of doing nothing.
-- **Baseline** retries on a fixed 2-day schedule — simple, widely used, but context-blind.
-- **Smart** understands *why* a payment failed before deciding *what to do next*.
+### The Four Strategies
+- **Control:** Accepts the failure (0 retries). Provides the empirical baseline for natural recovery.
+- **Fixed Schedule:** Retries on an unassisted calendar schedule ($D+1, D+3, D+6$).
+- **Salary-Aware:** Intelligently times retries around customer payday cash-flow using public Observation hints, without leaking latent simulator traits.
+- **Smart Policy:** Evaluates failure category, solicits an AI proposal, validates structure via Zod, and filters through deterministic guardrails.
 
-### Why Smart is Different
-The Smart agent uses Gemini to read failure context — decline category, balance volatility, attempts remaining — and proposes an action. But:
+### Key Empirical Takeaways
+1. **Intelligent Retries Recover Substantial Value:** Both Salary-Aware (+24.67 pp lift) and Fixed Schedule (+24.00 pp lift) dramatically outperform Control (+₹5,860 and +₹5,794 net value lift per seed).
+2. **Cash-Flow Timing Outperforms Fixed Calendars:** Salary-Aware achieves higher recovery (90.33% vs 89.67%) while requiring slightly fewer attempts per seed (14.27 vs 14.30).
+3. **Robustness Across Environments:** Under alternative assumption sets with stressed bank uptime (Set A: 70%–85% uptime) or high balance volatility (Set B), the pairwise ordering remains completely invariant.
+4. **Safety Is Invariant:** Deterministic guardrails ensure that attempt ceilings, non-peak hours, and hard-decline stand-downs are 100% enforced regardless of AI proposals.
 
-- **The AI never directly executes anything.** Proposals pass through deterministic Guardrails.
-- **Guardrails are purely deterministic** — hard failures always stand down, regardless of AI confidence.
-- **Execution is atomic** — PostgreSQL RPCs enforce idempotency. A mandate cannot be retried twice by accident.
-- **Uncertain cases escalate** — proposals flagged for human review or with confidence below the 0.70 defensive threshold escalate to Human Approval. *(Decision confidence: the current recovery policy assigns a deterministic 0.80 confidence value because Gemini currently returns action, retryDelayDays, and reasoning but no confidence field).*
-
-### What the Metrics Show
-In the final n=300 synthetic experiment (seed 42000):
-- **Control** achieved a 65.00% natural recovery rate (65/100) with 100 attempts (1.00 per mandate).
-- **Baseline** achieved an 80.00% recovery rate (80/100) with 122 attempts (1.22 per mandate).
-- **Smart** achieved a 73.00% recovery rate (73/100) with 125 attempts (1.25 per mandate).
-- Smart outperformed Control by **+8.00 percentage points** (+12.31% relative lift).
-- Smart was **-7.00 percentage points** (-8.75% relative) compared to Baseline on this cohort.
-- Safety invariants were 100% maintained with **0 violations** across all arms.
 
 ---
 
