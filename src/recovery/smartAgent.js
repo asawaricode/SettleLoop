@@ -20,6 +20,14 @@ import {
   validateProposalStructure,
   generateDeterministicFallback,
 } from './proposalValidator.js';
+import {
+  computeLLMCacheKey,
+  canonicalizeInput,
+  getReplayEntry,
+  setLiveCacheEntry,
+  DEFAULT_MODEL_NAME,
+  DEFAULT_PROMPT_VERSION,
+} from './llmCache.js';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Constants & LLM Mode Controls
@@ -32,14 +40,19 @@ export const VALID_ACTIONS = Object.freeze(['retry', 'stand_down', 'human_review
 const MAX_RETRY_DELAY_DAYS = 7;
 
 /** Gemini API endpoint and model. */
+export const GEMINI_MODEL_NAME = DEFAULT_MODEL_NAME;
+export const PROMPT_VERSION = DEFAULT_PROMPT_VERSION;
 const GEMINI_API_URL =
-  'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+  `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL_NAME}:generateContent`;
 
 /** Timeout in milliseconds for the Gemini API call. */
 const API_TIMEOUT_MS = 10_000;
 
 /** Pluggable mock LLM handler for tests and fuzzing. */
 let _mockLLMHandler = null;
+
+/** Programmatic LLM mode override */
+let _programmaticLLMMode = null;
 
 /**
  * Injects a mock LLM handler function for deterministic testing and fuzzing.
@@ -60,13 +73,43 @@ export function resetMockLLMHandler() {
 }
 
 /**
+ * Programmatically overrides the LLM mode.
+ *
+ * @param {'mock'|'replay'|'live'|null} mode
+ */
+export function setLLMMode(mode) {
+  if (mode === null) {
+    _programmaticLLMMode = null;
+    return;
+  }
+  if (['mock', 'replay', 'live'].includes(mode)) {
+    _programmaticLLMMode = mode;
+  } else {
+    throw new Error(`Invalid LLM mode: "${mode}". Valid modes are: mock, replay, live.`);
+  }
+}
+
+/**
+ * Resets programmatic LLM mode override.
+ */
+export function resetLLMMode() {
+  _programmaticLLMMode = null;
+}
+
+/**
  * Returns the current LLM mode: 'mock' | 'replay' | 'live'.
- * Evaluates CLI argument --llm=... first, then environment variable LLM_MODE.
- * Defaults to 'mock' in non-production environments to prevent accidental live calls.
+ * Evaluates:
+ * 1. Programmatic override (setLLMMode)
+ * 2. CLI argument --llm=...
+ * 3. Environment variable LLM_MODE
+ * 4. Default: 'mock'
  *
  * @returns {'mock'|'replay'|'live'}
  */
 export function getLLMMode() {
+  if (_programmaticLLMMode) {
+    return _programmaticLLMMode;
+  }
   const llmArg = process.argv.find(arg => arg.startsWith('--llm='));
   if (llmArg) {
     const val = llmArg.split('=')[1];
@@ -261,8 +304,10 @@ async function callGeminiNetwork(prompt) {
   return parsed;
 }
 
+const _originalFetch = globalThis.fetch;
+
 /**
- * Dispatches the prompt to either the mock handler, deterministic mock, or live Gemini.
+ * Dispatches the prompt to either the mock handler, deterministic mock, replay cache, or live Gemini.
  *
  * @param {string} prompt
  * @param {object} context
@@ -276,21 +321,53 @@ async function callGeminiAPI(prompt, context) {
 
   // 2. Evaluate LLM Mode
   const mode = getLLMMode();
+
+  if (mode === 'replay') {
+    // Replay mode: MUST make no live Gemini/network call.
+    const cacheKey = computeLLMCacheKey({
+      canonicalInput: context,
+      modelName: GEMINI_MODEL_NAME,
+      promptVersion: PROMPT_VERSION,
+    });
+
+    const cached = getReplayEntry(cacheKey);
+    if (!cached) {
+      throw new Error(
+        `Smart LLM replay cache miss for key "${cacheKey}". Replay mode requires cached responses and forbids live calls.`
+      );
+    }
+    return cached;
+  }
+
   if (mode === 'mock') {
-    // If test framework intercepted fetch (e.g. step13 / step18 tests), execute network call to hit interceptor
-    if (global.fetch && process.env.GEMINI_API_KEY) {
+    // Mock mode: Deterministic test-only behavior. MUST make no live network call.
+    // If a test framework specifically patched global.fetch with an in-memory mock, delegate to it:
+    if (globalThis.fetch && globalThis.fetch !== _originalFetch) {
       return await callGeminiNetwork(prompt);
     }
     return {
       action: 'retry',
       retryDelayDays: 2,
       timeSlot: '14:00',
+      channel: 'auto_debit',
+      confidence: 0.85,
       reasoning: 'Mock LLM: deterministic retry proposal for soft decline',
     };
   }
 
   // 3. Live mode (requires GEMINI_API_KEY)
-  return await callGeminiNetwork(prompt);
+  const res = await callGeminiNetwork(prompt);
+  try {
+    const cacheKey = computeLLMCacheKey({
+      canonicalInput: context,
+      modelName: GEMINI_MODEL_NAME,
+      promptVersion: PROMPT_VERSION,
+    });
+    setLiveCacheEntry(cacheKey, res);
+  } catch {
+    // non-fatal cache recording error
+  }
+  return res;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -425,7 +502,10 @@ export async function proposeSmartRecoveryAction(params = {}) {
           source: 'ai',
         };
       }
-    } catch {
+    } catch (err) {
+      if (err?.message && err.message.includes('replay cache miss')) {
+        throw err;
+      }
       // API error or parse throw -> deterministic fallback
       source = 'fallback';
       rawProposal = heuristicFallback({

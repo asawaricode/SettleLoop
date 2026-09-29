@@ -1,6 +1,7 @@
 import { supabase } from '../config/supabase.js';
 import { executeControlPolicy } from './controlPolicy.js';
 import { executeBaselinePolicy } from './baselinePolicy.js';
+import { executeSalaryAwarePolicy } from './salaryAwarePolicy.js';
 import { executeSmartPolicy } from './smartPolicy.js';
 
 /**
@@ -10,7 +11,7 @@ import { executeSmartPolicy } from './smartPolicy.js';
  * - status === 'pending'
  * - next_action === 'retry'
  * - next_action_day <= currentDay
- * - experiment_arm is supported ('control', 'baseline', or 'smart')
+ * - experiment_arm is supported ('control', 'baseline', 'fixed_schedule', 'salary_aware', or 'smart')
  *
  * @param {object} params
  * @param {string} params.runId - simulation_runs.id
@@ -56,10 +57,16 @@ export async function processMandate({
   // Dispatch based on experiment_arm
   switch (mandate.experiment_arm) {
     case 'control':
+    case 'holdout':
       return await executeControlPolicy({ runId, mandate, currentDay, seed });
 
     case 'baseline':
+    case 'fixed_schedule':
       return await executeBaselinePolicy({ runId, mandate, currentDay, seed });
+
+    case 'salary_aware':
+    case 'salary_aware_rule':
+      return await executeSalaryAwarePolicy({ runId, mandate, currentDay, seed });
 
     case 'smart': {
       if (!run) {

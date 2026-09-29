@@ -142,7 +142,9 @@ export async function getSimulationMetrics({ runId }) {
 
   // ── 4. Arm-Level Metrics ──────────────────────────────────────────────────
 
-  const armNames = ['control', 'baseline', 'smart'];
+  const defaultArms = ['control', 'baseline', 'smart', 'fixed_schedule', 'salary_aware'];
+  const presentArms = (mandates || []).map((m) => m.experiment_arm).filter(Boolean);
+  const armNames = [...new Set([...defaultArms, ...presentArms])];
   const arms = {};
 
   for (const arm of armNames) {
@@ -205,11 +207,19 @@ export async function getSimulationMetrics({ runId }) {
     };
   }
 
+  // Cross-alias baseline and fixed_schedule for backward compatibility
+  if (!arms.fixed_schedule && arms.baseline) {
+    arms.fixed_schedule = arms.baseline;
+  }
+  if (!arms.baseline && arms.fixed_schedule) {
+    arms.baseline = arms.fixed_schedule;
+  }
+
   // ── 5. Recovery Lift ──────────────────────────────────────────────────────
 
-  const smartRate = arms.smart.recoveryRate;
-  const controlRate = arms.control.recoveryRate;
-  const baselineRate = arms.baseline.recoveryRate;
+  const smartRate = arms.smart?.recoveryRate ?? 0;
+  const controlRate = arms.control?.recoveryRate ?? 0;
+  const baselineRate = arms.baseline?.recoveryRate ?? arms.fixed_schedule?.recoveryRate ?? 0;
 
   const vsControlAbs = smartRate - controlRate;
   const vsControlRel = controlRate === 0 ? null : (smartRate - controlRate) / controlRate;
@@ -222,8 +232,17 @@ export async function getSimulationMetrics({ runId }) {
     vsBaseline: createLiftValue(vsBaselineAbs, vsBaselineRel),
   };
 
+  if (arms.salary_aware) {
+    const salaryAwareRate = arms.salary_aware.recoveryRate ?? 0;
+    const vsSalaryAwareAbs = smartRate - salaryAwareRate;
+    const vsSalaryAwareRel = salaryAwareRate === 0 ? null : (smartRate - salaryAwareRate) / salaryAwareRate;
+    lift.vsSalaryAware = createLiftValue(vsSalaryAwareAbs, vsSalaryAwareRel);
+  }
+
   // Embed lift into smart arm as well for caller convenience
-  arms.smart.lift = lift;
+  if (arms.smart) {
+    arms.smart.lift = lift;
+  }
 
   // ── 6. Safety Metrics ─────────────────────────────────────────────────────
 

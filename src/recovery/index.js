@@ -1,5 +1,17 @@
-export { executeControlPolicy } from './controlPolicy.js';
-export { executeBaselinePolicy, RETRY_DELAY_BY_NEXT_ATTEMPT, MAX_BASELINE_ATTEMPTS } from './baselinePolicy.js';
+export { executeControlPolicy, decideControlAction } from './controlPolicy.js';
+export {
+  executeBaselinePolicy,
+  executeFixedSchedulePolicy,
+  decideFixedScheduleAction,
+  RETRY_DELAY_BY_NEXT_ATTEMPT,
+  MAX_BASELINE_ATTEMPTS,
+  MAX_FIXED_SCHEDULE_ATTEMPTS,
+} from './baselinePolicy.js';
+export {
+  executeSalaryAwarePolicy,
+  decideSalaryAwareAction,
+  MAX_SALARY_AWARE_ATTEMPTS,
+} from './salaryAwarePolicy.js';
 export { runControlBaselineRecovery, runAllRecovery } from './recoveryRunner.js';
 export { processMandate, processDueMandates } from './recoveryEngine.js';
 export { classifyFailure, VALID_CATEGORIES } from './failureClassifier.js';
@@ -31,5 +43,35 @@ export {
   setMockLLMHandler,
   resetMockLLMHandler,
   getLLMMode,
+  setLLMMode,
+  resetLLMMode,
+  GEMINI_MODEL_NAME,
+  PROMPT_VERSION,
 } from './smartAgent.js';
+export {
+  computeLLMCacheKey,
+  canonicalizeInput,
+  setReplayEntry,
+  getReplayEntry,
+  hasReplayEntry,
+  clearReplayCache,
+  loadReplayCache,
+  DEFAULT_MODEL_NAME,
+  DEFAULT_PROMPT_VERSION,
+} from './llmCache.js';
+export {
+  BENCHMARK_ARMS,
+  FOUR_HEADLINE_ARMS,
+  SEED_SPLIT,
+  TUNING_SEEDS,
+  EVALUATION_SEEDS,
+  captureConfigSnapshot,
+  assertEvaluationIntegrity,
+} from '../config/benchmarkConfig.js';
+export {
+  runPairedBenchmark,
+  generateBenchmarkPopulation,
+  simulateMandateArm,
+} from './benchmarkRunner.js';
+
 

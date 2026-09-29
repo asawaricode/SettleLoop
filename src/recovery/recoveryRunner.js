@@ -171,7 +171,15 @@ export async function runAllRecovery({ runId, benchmark = false, deterministic =
   let totalProcessed = 0;
   const daysEvaluated = [];
   let terminatedReason = '';
-  const allArms = ['control', 'baseline', 'smart'];
+  const allArms = [
+    'control',
+    'holdout',
+    'baseline',
+    'fixed_schedule',
+    'salary_aware',
+    'salary_aware_rule',
+    'smart',
+  ];
 
   while (true) {
     // 2. Read persisted clock state

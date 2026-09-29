@@ -370,5 +370,59 @@ The following are **project-level assumptions** used in the SettleLoop simulator
 
 ---
 
-*End of ASSUMPTIONS.md — Phase 1 Final.*
-*No runtime logic, schema, RPC, route, webhook, simulator, UI, dependency, or test file was modified.*
+## 12. Phase 5 Benchmark Framework Assumptions
+
+### 12.1 Four Experiment Arms
+
+| Arm | Identifier | Description | Information Boundary |
+|:---|:---|:---|:---|
+| **Control / Holdout** | `control` | Performs zero recovery retries on initial payment failure. Stood down immediately. | Public Observation only. Zero hidden traits. |
+| **Fixed Schedule** | `fixed_schedule` (alias: `baseline`) | Follows a deterministic retry schedule: Attempt 2 (D+1), Attempt 3 (D+2), Attempt 4 (D+3). Max 4 attempts. | Public Observation only. Zero hidden traits. |
+| **Salary-Aware Rule** | `salary_aware` (alias: `salary_aware_rule`) | Heuristic rule aligning retries with the exposed `noisyPaydayHint` within the 1–7 day delay window. Fallback to attempt schedule if hint > 7 days or absent. | Public Observation only. Uses noisy hint only; latent salaryDay, balanceDynamics, and bankReliability are completely shielded. |
+| **Smart** | `smart` | AI proposes → Zod validates → guardrails decide architecture. Deterministic fallback on validation failure. | Public Observation only. Prompt derived from allowlisted Observation fields only. |
+
+*Status: All four arms are `assumed` benchmark strategies. None is claimed as a regulatory mandate.*
+
+---
+
+### 12.2 LLM Modes
+
+| Mode | CLI Flag | Behavior | Network Access |
+|:---|:---|:---|:---|
+| **Replay** | `--llm=replay` | Uses previously cached deterministic responses matched by SHA-256 cache key. Fails explicitly on cache miss. | Strictly forbidden (zero network calls). |
+| **Mock** | `--llm=mock` | Returns deterministic mock proposals for test isolation. | Strictly forbidden (zero network calls). |
+| **Live** | `--llm=live` | Calls the real Gemini API integration using `GEMINI_API_KEY`. Saves responses to live cache. | Allowed; strictly excluded from automated test suite. |
+
+*Status: `assumed` test and execution plumbing.*
+
+---
+
+### 12.3 LLM Cache Key
+
+| Component | Specification |
+|:---|:---|
+| **Formula** | `SHA-256(canonicalized_input + ":" + model_name + ":" + prompt_version)` |
+| **Canonical Input** | Derived exclusively from allowlisted Observation fields (`mandateId`, `attemptsUsed`, `maxAttempts`, `amount`, `category`, `retryEligible`, `declineCode`, `noisyPaydayHint`, `bankId`, `currentDay`, `cycleState`). |
+| **Hidden Trait Exclusion** | Latent traits (`salaryDay`, `balanceDynamics`, `bankReliability`, etc.) are strictly excluded. |
+| **Key Order Invariance** | JSON keys are sorted recursively prior to serialization. Equivalent inputs produce identical hashes regardless of object key order. |
+| **Cache Isolation** | Replay, mock, and live entries are isolated and never silently mixed. |
+
+---
+
+### 12.4 Benchmark Seed Split
+
+| Split | Seed Range | Role | Invariant |
+|:---|:---|:---|:---|
+| **Tuning Seeds** | `1–10` | Strategy tuning and prompt configuration | Seeds 1–10 may be used while tuning the Salary-Aware rule and Smart prompt/configuration. |
+| **Evaluation Seeds** | `11–40` | Evaluation-only benchmark | Configuration, prompts, thresholds, and policy parameters are strictly immutable during evaluation execution. No ML training or parameter optimization. |
+
+*Every arm runs against the exact same mandate population and shared causal noise stream for a given evaluation seed.*
+
+---
+
+### 12.5 Observation-Only Boundary
+
+No experiment arm receives or reads hidden simulator state directly. All strategy inputs pass through the frozen, allowlisted Observation boundary.
+
+*Assumed benchmark parameters — not claimed as real-world recovery performance.*
+

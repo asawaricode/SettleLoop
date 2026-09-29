@@ -22,13 +22,29 @@ import { assertTransition } from '../stateMachine/mandateStateMachine.js';
  * @param {number} params.seed
  * @returns {Promise<object>} Updated mandate record
  */
+/**
+ * Pure decision function for Control / Holdout arm.
+ * Enforces ZERO recovery retries.
+ *
+ * @param {object} [observation]
+ * @param {object} [failureInfo]
+ * @returns {{ action: 'stand_down', delayDays: null, reasoning: string }}
+ */
+export function decideControlAction(observation, failureInfo = {}) {
+  return {
+    action: 'stand_down',
+    delayDays: null,
+    reasoning: 'Control / Holdout arm performs zero recovery retries; stood down immediately.',
+  };
+}
+
 export async function executeControlPolicy({ runId, mandate, currentDay, seed }) {
   if (!runId) throw new Error('controlPolicy: runId is required');
   if (!mandate || !mandate.id) throw new Error('controlPolicy: mandate with id is required');
   if (currentDay === undefined || currentDay === null) throw new Error('controlPolicy: currentDay is required');
   if (seed === undefined || seed === null) throw new Error('controlPolicy: seed is required');
 
-  if (mandate.experiment_arm !== 'control') {
+  if (mandate.experiment_arm !== 'control' && mandate.experiment_arm !== 'holdout') {
     throw new Error(`controlPolicy: expected control arm, got ${mandate.experiment_arm}`);
   }
 
