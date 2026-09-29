@@ -17,14 +17,62 @@ export const RETRY_DELAY_BY_NEXT_ATTEMPT = Object.freeze({
 });
 
 export const MAX_BASELINE_ATTEMPTS = 4;
+export const MAX_FIXED_SCHEDULE_ATTEMPTS = 4;
 
 /**
- * Executes a recovery attempt for a Baseline arm mandate.
+ * Pure decision function for Fixed Schedule / Baseline arm.
+ * Uses ONLY public Observation and failure flags to determine next action.
+ *
+ * @param {object} observation
+ * @param {object} [failureInfo]
+ * @returns {{
+ *   action: 'retry' | 'stand_down' | 'exhausted',
+ *   delayDays: number | null,
+ *   timeSlot: string,
+ *   reasoning: string
+ * }}
+ */
+export function decideFixedScheduleAction(observation, failureInfo = {}) {
+  const attemptsUsed = Number(observation?.attemptsUsed ?? 0);
+  const category = failureInfo.category ?? 'soft';
+  const retryEligible = failureInfo.retryEligible ?? true;
+
+  if (category === 'hard' || category === 'unknown' || retryEligible === false) {
+    return {
+      action: 'stand_down',
+      delayDays: null,
+      timeSlot: '14:00',
+      reasoning: 'Fixed schedule: failure is non-retryable; stood down immediately.',
+    };
+  }
+
+  if (attemptsUsed >= MAX_FIXED_SCHEDULE_ATTEMPTS) {
+    return {
+      action: 'exhausted',
+      delayDays: null,
+      timeSlot: '14:00',
+      reasoning: 'Fixed schedule: maximum attempts reached; exhausted.',
+    };
+  }
+
+  const nextAttempt = attemptsUsed + 1;
+  const delayDays = RETRY_DELAY_BY_NEXT_ATTEMPT[nextAttempt] || 2;
+
+  return {
+    action: 'retry',
+    delayDays,
+    timeSlot: '14:00',
+    reasoning: `Fixed schedule: scheduled attempt ${nextAttempt} with delay ${delayDays}.`,
+  };
+}
+
+/**
+ * Executes a recovery attempt for a Baseline / Fixed Schedule arm mandate.
  *
  * Rules:
  * 1. Execute attempt via execute_attempt RPC.
  * 2. Get authoritative attempt_number from attempts table.
- * 3. Simulate payment via paymentSimulator (WITHOUT currentDay).
+ * 3. Simulate payment via paymentSimulator.
  * 4. Complete attempt via complete_attempt RPC.
  * 5. Re-read mandate.
  * 6. If success -> recovered (owned by complete_attempt).
@@ -46,8 +94,8 @@ export async function executeBaselinePolicy({ runId, mandate, currentDay, seed }
   if (currentDay === undefined || currentDay === null) throw new Error('baselinePolicy: currentDay is required');
   if (seed === undefined || seed === null) throw new Error('baselinePolicy: seed is required');
 
-  if (mandate.experiment_arm !== 'baseline') {
-    throw new Error(`baselinePolicy: expected baseline arm, got ${mandate.experiment_arm}`);
+  if (mandate.experiment_arm !== 'baseline' && mandate.experiment_arm !== 'fixed_schedule') {
+    throw new Error(`baselinePolicy: expected baseline or fixed_schedule arm, got ${mandate.experiment_arm}`);
   }
 
   // Pre-call estimate for idempotency key
@@ -292,3 +340,6 @@ export async function executeBaselinePolicy({ runId, mandate, currentDay, seed }
     .single();
   return finalMandate;
 }
+
+export const executeFixedSchedulePolicy = executeBaselinePolicy;
+
